@@ -10,7 +10,6 @@ pluginManagement {
 dependencyResolutionManagement {
     versionCatalogs {
         create("libs") {
-            plugin("shadow", "com.gradleup.shadow").version("8.3.9")
             plugin("paper", "io.papermc.paperweight.userdev").version("2.0.0-beta.19")
             plugin("runpaper", "xyz.jpenilla.run-paper").version("2.3.0")
         }

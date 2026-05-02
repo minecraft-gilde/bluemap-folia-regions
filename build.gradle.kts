@@ -1,7 +1,6 @@
 plugins {
     java
     idea
-    alias(libs.plugins.shadow)
     alias(libs.plugins.paper)
     alias(libs.plugins.runpaper)
 }
@@ -28,6 +27,9 @@ dependencies {
     val paperVersion = project.properties["paper.version"].toString()
     paperweight.foliaDevBundle(paperVersion)
     compileOnly("de.bluecolored.bluemap:BlueMapAPI:2.7.1")
+    testImplementation("de.bluecolored.bluemap:BlueMapAPI:2.7.1")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks {
@@ -36,14 +38,18 @@ tasks {
     val cleanPluginArtifacts by registering(Delete::class) {
         delete(layout.buildDirectory.dir("libs"))
     }
-
-    withType<Jar>().configureEach {
-        destinationDirectory.set(intermediateJars)
+    val cleanIntermediateJars by registering(Delete::class) {
+        delete(intermediateJars)
     }
 
     withType<JavaCompile>().configureEach {
         options.encoding = Charsets.UTF_8.name()
         options.release.set(21)
+    }
+
+    withType<Jar>().configureEach {
+        dependsOn(cleanIntermediateJars)
+        destinationDirectory.set(intermediateJars)
     }
 
     assemble {
@@ -53,6 +59,10 @@ tasks {
     reobfJar {
         dependsOn(cleanPluginArtifacts)
         outputJar.set(pluginJar)
+    }
+
+    test {
+        useJUnitPlatform()
     }
 
     processResources {

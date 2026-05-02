@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.logging.Level;
 
 public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     private static final long INITIAL_DELAY_TICKS = 20L;
@@ -70,14 +71,14 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
                     this,
                     (t) -> {
                         if (!this.shuttingDown && isEnabled()) {
-                            updateRegionMarkers(map);
+                            updateRegionMarkersSafely(map);
                         }
                     },
                     INITIAL_DELAY_TICKS,
                     this.configuration.updateIntervalTicks()
             );
 
-            ScheduledTask previous = this.tasks.put(map.getId(), task);
+            ScheduledTask previous = this.tasks.put(taskKey(map), task);
             if (previous != null) {
                 previous.cancel();
             }
@@ -135,6 +136,14 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         }
     }
 
+    private void updateRegionMarkersSafely(BlueMapMap map) {
+        try {
+            updateRegionMarkers(map);
+        } catch (RuntimeException exception) {
+            getLogger().log(Level.WARNING, "Failed to update Folia region markers for BlueMap map: " + taskKey(map), exception);
+        }
+    }
+
     private void updateRegionMarkers(BlueMapMap map) {
         PluginConfiguration activeConfiguration = this.configuration;
         MarkerSet markerSet = MarkerSet.builder()
@@ -160,6 +169,10 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         map.getMarkerSets().put(activeConfiguration.markerSetId(), markerSet);
     }
 
+    private String taskKey(BlueMapMap map) {
+        return map.getWorld().getId() + ":" + map.getId();
+    }
+
     private Optional<World> resolveWorld(String id) {
         int hashIndex = id.indexOf('#');
         if (hashIndex != -1) {
@@ -168,19 +181,26 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
             if (byName != null) {
                 return Optional.of(byName);
             }
+            Optional<World> byUuid = resolveWorldByUuid(worldName);
+            if (byUuid.isPresent()) {
+                return byUuid;
+            }
         }
 
-        try {
-            UUID uuid = UUID.fromString(id);
-            World byUuid = Bukkit.getWorld(uuid);
-            if (byUuid != null) {
-                return Optional.of(byUuid);
-            }
-        } catch (IllegalArgumentException ignored) {
-            // The BlueMap world id is not a UUID.
+        Optional<World> byUuid = resolveWorldByUuid(id);
+        if (byUuid.isPresent()) {
+            return byUuid;
         }
 
         return Optional.ofNullable(Bukkit.getWorld(id));
+    }
+
+    private Optional<World> resolveWorldByUuid(String id) {
+        try {
+            return Optional.ofNullable(Bukkit.getWorld(UUID.fromString(id)));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
     }
 
     private void registerPermissions() {

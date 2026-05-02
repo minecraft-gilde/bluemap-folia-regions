@@ -12,6 +12,7 @@ import io.papermc.paper.threadedregions.TickRegions.TickRegionSectionData;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -40,33 +41,38 @@ public class RegionMarkerFactory {
                 continue;
             }
 
-            List<Vector2d> points = getSectionPoints(snapshot.sections());
-            if (points.size() < 3) {
+            List<RegionPolygon> polygons = createRegionPolygons(snapshot.sections(), this.sectionBlockSize);
+            if (polygons.isEmpty()) {
                 continue;
             }
 
             ChunkPos centerChunk = snapshot.centerChunk();
-            String markerId = "region-" + centerChunk.x + "-" + centerChunk.z;
+            String baseMarkerId = "region-" + centerChunk.x + "-" + centerChunk.z;
             String label = formatLabel(configuration.markerLabelFormat(), snapshot);
-            Shape shape = new Shape(points);
 
             String detail =
                     "Sektionen: " + snapshot.sections().size() + "<br>" +
                     "Chunks: " + snapshot.chunkCount() + "<br>" +
-                    "Entitäten: " + snapshot.entityCount() + "<br>" +
+                    "Entit&auml;ten: " + snapshot.entityCount() + "<br>" +
                     "Spieler: " + snapshot.playerCount();
 
-            ShapeMarker marker = ShapeMarker.builder()
-                    .shape(shape, configuration.markerHeight())
-                    .label(label)
-                    .lineColor(configuration.markerLineColor())
-                    .fillColor(configuration.markerFillColor())
-                    .depthTestEnabled(false)
-                    .build();
-            marker.setLineWidth(configuration.markerLineWidth());
-            marker.setDetail(detail);
+            for (int i = 0; i < polygons.size(); i++) {
+                RegionPolygon polygon = polygons.get(i);
+                String markerId = polygons.size() == 1 ? baseMarkerId : baseMarkerId + "-" + (i + 1);
 
-            markers.put(markerId, marker);
+                ShapeMarker marker = ShapeMarker.builder()
+                        .shape(new Shape(polygon.outline()), configuration.markerHeight())
+                        .holes(polygon.holes().stream().map(Shape::new).toArray(Shape[]::new))
+                        .label(label)
+                        .lineColor(configuration.markerLineColor())
+                        .fillColor(configuration.markerFillColor())
+                        .lineWidth(configuration.markerLineWidth())
+                        .depthTestEnabled(false)
+                        .build();
+                marker.setDetail(detail);
+
+                markers.put(markerId, marker);
+            }
         }
         return markers;
     }
@@ -98,24 +104,70 @@ public class RegionMarkerFactory {
                 .replace("{players}", Integer.toString(snapshot.playerCount()));
     }
 
-    private List<Vector2d> getSectionPoints(List<Long> sections) {
+    static List<RegionPolygon> createRegionPolygons(Collection<Long> sections, int sectionBlockSize) {
         Set<SectionCoord> sectionCoords = new HashSet<>(sections.size());
         for (long sectionKey : sections) {
             sectionCoords.add(new SectionCoord(getChunkX(sectionKey), getChunkZ(sectionKey)));
         }
 
-        List<GridPoint> outline = extractLargestOutline(sectionCoords);
+        List<GridLoop> loops = extractOutlines(sectionCoords);
+        if (loops.isEmpty()) {
+            return List.of();
+        }
+
+        loops.sort(
+                Comparator.comparingDouble(GridLoop::areaAbs).reversed()
+                        .thenComparingInt(GridLoop::minX)
+                        .thenComparingInt(GridLoop::minZ)
+        );
+
+        List<GridLoop> outlines = loops.stream()
+                .filter((loop) -> loop.signedArea2() < 0L)
+                .toList();
+        if (outlines.isEmpty()) {
+            outlines = loops;
+        }
+
+        Map<GridLoop, List<GridLoop>> holesByOutline = new HashMap<>();
+        for (GridLoop outline : outlines) {
+            holesByOutline.put(outline, new ArrayList<>());
+        }
+
+        for (GridLoop loop : loops) {
+            if (loop.signedArea2() <= 0L) {
+                continue;
+            }
+
+            GridLoop outline = findSmallestContainingOutline(loop, outlines);
+            if (outline != null) {
+                holesByOutline.get(outline).add(loop);
+            }
+        }
+
+        List<RegionPolygon> polygons = new ArrayList<>(outlines.size());
+        for (GridLoop outline : outlines) {
+            List<List<Vector2d>> holes = holesByOutline.get(outline).stream()
+                    .sorted(Comparator.comparingDouble(GridLoop::areaAbs).reversed())
+                    .map((hole) -> toVectors(hole.points(), sectionBlockSize))
+                    .toList();
+
+            polygons.add(new RegionPolygon(toVectors(outline.points(), sectionBlockSize), holes));
+        }
+        return polygons;
+    }
+
+    private static List<Vector2d> toVectors(List<GridPoint> outline, int sectionBlockSize) {
         List<Vector2d> points = new ArrayList<>(outline.size());
         for (GridPoint point : outline) {
             points.add(Vector2d.from(
-                    (double) point.x() * this.sectionBlockSize,
-                    (double) point.z() * this.sectionBlockSize
+                    (double) point.x() * sectionBlockSize,
+                    (double) point.z() * sectionBlockSize
             ));
         }
         return points;
     }
 
-    private static List<GridPoint> extractLargestOutline(Set<SectionCoord> sections) {
+    private static List<GridLoop> extractOutlines(Set<SectionCoord> sections) {
         if (sections.isEmpty()) {
             return List.of();
         }
@@ -140,7 +192,7 @@ public class RegionMarkerFactory {
         }
 
         Set<Edge> visited = new HashSet<>();
-        List<List<GridPoint>> loops = new ArrayList<>();
+        List<GridLoop> loops = new ArrayList<>();
         for (Map.Entry<GridPoint, List<GridPoint>> entry : outgoing.entrySet()) {
             for (GridPoint to : entry.getValue()) {
                 Edge start = new Edge(entry.getKey(), to);
@@ -150,14 +202,57 @@ public class RegionMarkerFactory {
 
                 List<GridPoint> loop = traceLoop(outgoing, visited, start);
                 if (loop.size() >= 3) {
-                    loops.add(simplifyLoop(loop));
+                    List<GridPoint> simplified = simplifyLoop(loop);
+                    long signedArea2 = polygonSignedArea2(simplified);
+                    if (signedArea2 != 0L) {
+                        loops.add(new GridLoop(simplified, signedArea2));
+                    }
                 }
             }
         }
 
-        return loops.stream()
-                .max(Comparator.comparingDouble(RegionMarkerFactory::polygonAreaAbs))
-                .orElse(List.of());
+        return loops;
+    }
+
+    private static GridLoop findSmallestContainingOutline(GridLoop loop, List<GridLoop> outlines) {
+        Vector2d samplePoint = polygonCentroid(loop.points());
+        GridLoop best = null;
+        for (GridLoop outline : outlines) {
+            if (outline == loop || outline.areaAbs() <= loop.areaAbs()) {
+                continue;
+            }
+            if (!containsPoint(outline.points(), samplePoint.getX(), samplePoint.getY())) {
+                continue;
+            }
+            if (best == null || outline.areaAbs() < best.areaAbs()) {
+                best = outline;
+            }
+        }
+        return best;
+    }
+
+    private static Vector2d polygonCentroid(List<GridPoint> points) {
+        double x = 0D;
+        double z = 0D;
+        for (GridPoint point : points) {
+            x += point.x();
+            z += point.z();
+        }
+        return Vector2d.from(x / points.size(), z / points.size());
+    }
+
+    private static boolean containsPoint(List<GridPoint> polygon, double x, double z) {
+        boolean inside = false;
+        for (int i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+            GridPoint current = polygon.get(i);
+            GridPoint previous = polygon.get(j);
+            if ((current.z() > z) != (previous.z() > z)
+                    && x < (double) (previous.x() - current.x()) * (z - current.z())
+                    / (previous.z() - current.z()) + current.x()) {
+                inside = !inside;
+            }
+        }
+        return inside;
     }
 
     private static List<GridPoint> traceLoop(Map<GridPoint, List<GridPoint>> outgoing, Set<Edge> visited, Edge start) {
@@ -206,10 +301,10 @@ public class RegionMarkerFactory {
             int outDirection = directionIndex(candidate.x() - current.x(), candidate.z() - current.z());
             int turn = (outDirection - inDirection + 4) % 4;
             int priority = switch (turn) {
-                case 3 -> 0; // prefer left turn
-                case 0 -> 1; // then straight
-                case 1 -> 2; // then right
-                default -> 3; // avoid going back
+                case 3 -> 0;
+                case 0 -> 1;
+                case 1 -> 2;
+                default -> 3;
             };
 
             if (priority < bestPriority) {
@@ -265,9 +360,9 @@ public class RegionMarkerFactory {
         outgoing.computeIfAbsent(from, ignored -> new ArrayList<>()).add(to);
     }
 
-    private static double polygonAreaAbs(List<GridPoint> points) {
+    private static long polygonSignedArea2(List<GridPoint> points) {
         if (points.size() < 3) {
-            return 0D;
+            return 0L;
         }
 
         long area2 = 0L;
@@ -276,7 +371,7 @@ public class RegionMarkerFactory {
             GridPoint next = points.get((i + 1) % points.size());
             area2 += (long) current.x() * next.z() - (long) next.x() * current.z();
         }
-        return Math.abs(area2) / 2.0D;
+        return area2;
     }
 
     private static int getChunkX(long chunkKey) {
@@ -296,9 +391,25 @@ public class RegionMarkerFactory {
             int playerCount
     ) {}
 
+    record RegionPolygon(List<Vector2d> outline, List<List<Vector2d>> holes) {}
+
     private record SectionCoord(int x, int z) {}
 
     private record GridPoint(int x, int z) {}
 
     private record Edge(GridPoint from, GridPoint to) {}
+
+    private record GridLoop(List<GridPoint> points, long signedArea2) {
+        double areaAbs() {
+            return Math.abs(this.signedArea2) / 2.0D;
+        }
+
+        int minX() {
+            return this.points.stream().mapToInt(GridPoint::x).min().orElse(0);
+        }
+
+        int minZ() {
+            return this.points.stream().mapToInt(GridPoint::z).min().orElse(0);
+        }
+    }
 }
