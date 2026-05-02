@@ -9,6 +9,12 @@ plugins {
 group = project.properties["plugin.group"].toString()
 version = project.properties["plugin.version"].toString()
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 repositories {
     mavenCentral()
     maven {
@@ -25,8 +31,28 @@ dependencies {
 }
 
 tasks {
+    val pluginJar = layout.buildDirectory.file("libs/${project.name}-${project.version}.jar")
+    val intermediateJars = layout.buildDirectory.dir("tmp/intermediate-jars")
+    val cleanPluginArtifacts by registering(Delete::class) {
+        delete(layout.buildDirectory.dir("libs"))
+    }
+
+    withType<Jar>().configureEach {
+        destinationDirectory.set(intermediateJars)
+    }
+
+    withType<JavaCompile>().configureEach {
+        options.encoding = Charsets.UTF_8.name()
+        options.release.set(21)
+    }
+
     assemble {
         dependsOn(reobfJar)
+    }
+
+    reobfJar {
+        dependsOn(cleanPluginArtifacts)
+        outputJar.set(pluginJar)
     }
 
     processResources {

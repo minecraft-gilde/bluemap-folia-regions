@@ -1,0 +1,16 @@
+update-interval-seconds: 5
+
+marker-set:
+  id: folia-regions
+  label: Folia Tick-Regionen
+  default-hidden: true
+  toggleable: true
+
+markers:
+  # Available placeholders: {world}, {center_x}, {center_z}, {sections}, {chunks}, {entities}, {players}
+  label-format: "Region[{center_x},{center_z}]"
+  height: 80
+  # Hex format: #RRGGBB or #RRGGBBAA
+  line-color: "#9b46ffff"
+  fill-color: "#d2aaff59"
+  line-width: 2
