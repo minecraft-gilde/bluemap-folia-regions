@@ -10,9 +10,12 @@ version = project.properties["plugin.version"].toString()
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
+
+paperweight.reobfArtifactConfiguration =
+    io.papermc.paperweight.userdev.ReobfArtifactConfiguration.MOJANG_PRODUCTION
 
 repositories {
     mavenCentral()
@@ -26,39 +29,20 @@ repositories {
 dependencies {
     val paperVersion = project.properties["paper.version"].toString()
     paperweight.foliaDevBundle(paperVersion)
-    compileOnly("de.bluecolored.bluemap:BlueMapAPI:2.7.1")
-    testImplementation("de.bluecolored.bluemap:BlueMapAPI:2.7.1")
+    compileOnly("de.bluecolored:bluemap-api:2.7.8")
+    testImplementation("de.bluecolored:bluemap-api:2.7.8")
     testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks {
-    val pluginJar = layout.buildDirectory.file("libs/${project.name}-${project.version}.jar")
-    val intermediateJars = layout.buildDirectory.dir("tmp/intermediate-jars")
-    val cleanPluginArtifacts by registering(Delete::class) {
-        delete(layout.buildDirectory.dir("libs"))
-    }
-    val cleanIntermediateJars by registering(Delete::class) {
-        delete(intermediateJars)
-    }
-
     withType<JavaCompile>().configureEach {
         options.encoding = Charsets.UTF_8.name()
-        options.release.set(21)
+        options.release.set(25)
     }
 
-    withType<Jar>().configureEach {
-        dependsOn(cleanIntermediateJars)
-        destinationDirectory.set(intermediateJars)
-    }
-
-    assemble {
-        dependsOn(reobfJar)
-    }
-
-    reobfJar {
-        dependsOn(cleanPluginArtifacts)
-        outputJar.set(pluginJar)
+    jar {
+        archiveFileName.set("${project.name}-${project.version}.jar")
     }
 
     test {

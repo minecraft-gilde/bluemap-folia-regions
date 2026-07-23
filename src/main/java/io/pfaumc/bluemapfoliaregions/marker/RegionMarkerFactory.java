@@ -47,7 +47,7 @@ public class RegionMarkerFactory {
             }
 
             ChunkPos centerChunk = snapshot.centerChunk();
-            String baseMarkerId = "region-" + centerChunk.x + "-" + centerChunk.z;
+            String baseMarkerId = "region-" + centerChunk.x() + "-" + centerChunk.z();
             String label = formatLabel(configuration.markerLabelFormat(), snapshot);
 
             String detail =
@@ -96,8 +96,8 @@ public class RegionMarkerFactory {
         ChunkPos centerChunk = snapshot.centerChunk();
         return format
                 .replace("{world}", snapshot.worldName())
-                .replace("{center_x}", Integer.toString(centerChunk.x))
-                .replace("{center_z}", Integer.toString(centerChunk.z))
+                .replace("{center_x}", Integer.toString(centerChunk.x()))
+                .replace("{center_z}", Integer.toString(centerChunk.z()))
                 .replace("{sections}", Integer.toString(snapshot.sections().size()))
                 .replace("{chunks}", Integer.toString(snapshot.chunkCount()))
                 .replace("{entities}", Integer.toString(snapshot.entityCount()))

@@ -12,7 +12,7 @@ Zeigt Folia Tick-Regionen als Marker-Overlay in **BlueMap** an.
 ## Voraussetzungen
 - **Folia** (Version passend zum Build des Plugins)
 - **BlueMap** (BlueMapAPI)
-- **JDK 21** fuer den Build
+- **JDK 25** fuer den Build
 - **Gradle 9.x** ueber den mitgelieferten Wrapper
 
 ## Installation
