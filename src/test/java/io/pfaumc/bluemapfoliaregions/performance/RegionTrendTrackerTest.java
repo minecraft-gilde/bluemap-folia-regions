@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -163,6 +164,29 @@ class RegionTrendTrackerTest {
         assertEquals(TrendDirection.UNAVAILABLE, trend.tps());
     }
 
+    @Test
+    void prunesRegionsThatDisappearFromLargeUpdates() {
+        RegionTrendTracker tracker = new RegionTrendTracker(CONFIGURATION);
+        Instant capturedAt = Instant.parse("2026-07-29T10:00:00Z");
+        List<RegionSnapshot> manyRegions = new ArrayList<>(2_000);
+        for (long regionId = 1L; regionId <= 2_000L; regionId++) {
+            manyRegions.add(unavailableSnapshot(regionId, capturedAt, 10, 1));
+        }
+
+        tracker.update(manyRegions, VISUALIZATION);
+        assertEquals(2_000, tracker.trackedRegionCount());
+
+        tracker.update(
+                List.of(
+                        unavailableSnapshot(1L, capturedAt.plusSeconds(5), 10, 1),
+                        unavailableSnapshot(2L, capturedAt.plusSeconds(5), 10, 1)
+                ),
+                VISUALIZATION
+        );
+
+        assertEquals(2, tracker.trackedRegionCount());
+    }
+
     private static RegionSnapshot snapshot(
             Instant capturedAt,
             List<Long> sections,
@@ -218,8 +242,17 @@ class RegionTrendTrackerTest {
     }
 
     private static RegionSnapshot unavailableSnapshot(Instant capturedAt, int entities, int players) {
+        return unavailableSnapshot(42L, capturedAt, entities, players);
+    }
+
+    private static RegionSnapshot unavailableSnapshot(
+            long regionId,
+            Instant capturedAt,
+            int entities,
+            int players
+    ) {
         return new RegionSnapshot(
-                42L,
+                regionId,
                 "world",
                 10,
                 -20,

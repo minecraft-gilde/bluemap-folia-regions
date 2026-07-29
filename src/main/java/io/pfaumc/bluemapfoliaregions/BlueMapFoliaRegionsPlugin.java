@@ -44,6 +44,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     private final ConcurrentMap<String, ScheduledTask> tasks = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MapUpdateStatus> mapStatuses = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RegionTrendTracker> trendTrackers = new ConcurrentHashMap<>();
+    private final LifecycleGeneration lifecycleGeneration = new LifecycleGeneration();
     private final RegionMarkerFactory markerFactory = new RegionMarkerFactory(1 << TickRegions.getRegionChunkShift());
     private volatile PluginConfiguration configuration;
     private volatile BlueMapAPI currentApi;
@@ -65,6 +66,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         this.shuttingDown = true;
+        this.lifecycleGeneration.advance();
         cancelAllTasks();
         this.mapStatuses.clear();
         this.trendTrackers.clear();
@@ -81,12 +83,13 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         this.currentApi = api;
         cancelAllTasks();
         this.trendTrackers.clear();
+        long generation = this.lifecycleGeneration.advance();
         for (BlueMapMap map : api.getMaps()) {
             ScheduledTask task = Bukkit.getGlobalRegionScheduler().runAtFixedRate(
                     this,
                     (t) -> {
-                        if (!this.shuttingDown && isEnabled()) {
-                            updateRegionMarkersSafely(map);
+                        if (isGenerationActive(generation)) {
+                            updateRegionMarkersSafely(map, generation);
                         }
                     },
                     INITIAL_DELAY_TICKS,
@@ -101,6 +104,10 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     }
 
     private void onBlueMapDisable(BlueMapAPI api) {
+        if (this.currentApi != api) {
+            return;
+        }
+        this.lifecycleGeneration.advance();
         cancelAllTasks();
         this.mapStatuses.clear();
         this.trendTrackers.clear();
@@ -111,6 +118,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     }
 
     public boolean reloadPluginConfiguration() {
+        this.lifecycleGeneration.advance();
         PluginConfiguration previousConfiguration = this.configuration;
         reloadConfig();
         this.configuration = PluginConfiguration.from(this);
@@ -155,12 +163,20 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         }
     }
 
-    private void updateRegionMarkersSafely(BlueMapMap map) {
+    private void updateRegionMarkersSafely(BlueMapMap map, long generation) {
+        if (!isGenerationActive(generation)) {
+            return;
+        }
         long startedAt = System.nanoTime();
         Instant updateTime = Instant.now();
         String mapKey = taskKey(map);
         try {
-            MarkerBuildResult result = updateRegionMarkers(map, updateTime);
+            MarkerUpdate update = buildRegionMarkers(map, updateTime);
+            if (!isGenerationActive(generation)) {
+                return;
+            }
+            map.getMarkerSets().put(update.markerSetId(), update.markerSet());
+            MarkerBuildResult result = update.result();
             this.mapStatuses.put(mapKey, new MapUpdateStatus(
                     mapKey,
                     result.snapshots().size(),
@@ -170,6 +186,9 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
                     null
             ));
         } catch (RuntimeException exception) {
+            if (!isGenerationActive(generation)) {
+                return;
+            }
             this.mapStatuses.compute(mapKey, (ignored, previous) -> new MapUpdateStatus(
                     mapKey,
                     previous == null ? 0 : previous.regionCount(),
@@ -182,7 +201,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         }
     }
 
-    private MarkerBuildResult updateRegionMarkers(BlueMapMap map, Instant capturedAt) {
+    private MarkerUpdate buildRegionMarkers(BlueMapMap map, Instant capturedAt) {
         PluginConfiguration activeConfiguration = this.configuration;
         MarkerSet markerSet = MarkerSet.builder()
                 .label(activeConfiguration.markerSetLabel())
@@ -214,8 +233,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
                 )
         );
         markerSet.getMarkers().putAll(result.markers());
-        map.getMarkerSets().put(activeConfiguration.markerSetId(), markerSet);
-        return result;
+        return new MarkerUpdate(activeConfiguration.markerSetId(), markerSet, result);
     }
 
     public RuntimeStatus getRuntimeStatus() {
@@ -238,9 +256,13 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         }
 
         int scheduled = 0;
+        long generation = this.lifecycleGeneration.current();
         for (BlueMapMap map : api.getMaps()) {
             try {
-                Bukkit.getGlobalRegionScheduler().run(this, (task) -> updateRegionMarkersSafely(map));
+                Bukkit.getGlobalRegionScheduler().run(
+                        this,
+                        (task) -> updateRegionMarkersSafely(map, generation)
+                );
                 scheduled++;
             } catch (IllegalPluginAccessException exception) {
                 getLogger().log(Level.WARNING, "Could not schedule manual refresh for " + taskKey(map), exception);
@@ -251,6 +273,12 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
 
     private static double elapsedMillis(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000.0D;
+    }
+
+    private boolean isGenerationActive(long generation) {
+        return this.lifecycleGeneration.isCurrent(generation)
+                && !this.shuttingDown
+                && isEnabled();
     }
 
     private String taskKey(BlueMapMap map) {
@@ -364,4 +392,6 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
             return this.lastError == null;
         }
     }
+
+    private record MarkerUpdate(String markerSetId, MarkerSet markerSet, MarkerBuildResult result) {}
 }

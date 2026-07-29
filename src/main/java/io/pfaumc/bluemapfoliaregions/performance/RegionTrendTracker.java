@@ -74,6 +74,10 @@ public final class RegionTrendTracker {
         return Map.copyOf(trends);
     }
 
+    synchronized int trackedRegionCount() {
+        return this.regions.size();
+    }
+
     private boolean isTopologyComparable(TrackedRegion previous, RegionSnapshot current, Set<Long> sections) {
         if (previous == null
                 || !previous.sections().equals(sections)) {

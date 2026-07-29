@@ -15,7 +15,10 @@ public record TrendConfiguration(
         if (resetAfter.isNegative() || resetAfter.isZero()) {
             throw new IllegalArgumentException("resetAfter must be positive");
         }
-        if (minimumTpsChange < 0.0D
+        if (!Double.isFinite(minimumTpsChange)
+                || !Double.isFinite(minimumMsptChange)
+                || !Double.isFinite(minimumUtilizationChange)
+                || minimumTpsChange < 0.0D
                 || minimumMsptChange < 0.0D
                 || minimumUtilizationChange < 0.0D
                 || minimumEntityChange < 0

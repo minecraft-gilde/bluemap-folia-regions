@@ -6,7 +6,9 @@ plugins {
 }
 
 group = project.properties["plugin.group"].toString()
-version = project.properties["plugin.version"].toString()
+val releaseVersion = providers.gradleProperty("releaseVersion")
+    .orElse(project.properties["plugin.version"].toString())
+version = releaseVersion.get()
 
 java {
     toolchain {

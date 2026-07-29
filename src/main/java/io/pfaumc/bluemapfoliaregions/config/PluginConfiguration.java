@@ -30,6 +30,9 @@ public record PluginConfiguration(
         LoadContextConfiguration loadContext,
         long updateIntervalTicks
 ) {
+    private static final int CONFIG_VERSION = 2;
+    private static final long DEFAULT_UPDATE_INTERVAL_SECONDS = 5L;
+    private static final long MAX_UPDATE_INTERVAL_SECONDS = 3_600L;
     private static final String DEFAULT_MARKER_SET_ID = "folia-regions";
     private static final String DEFAULT_MARKER_SET_LABEL = "Folia Tick-Regionen";
     private static final String DEFAULT_LABEL_FORMAT = "Region[{center_x},{center_z}]";
@@ -102,7 +105,9 @@ public record PluginConfiguration(
     public static PluginConfiguration from(JavaPlugin plugin) {
         FileConfiguration config = plugin.getConfig();
         Logger logger = plugin.getLogger();
-        TrendConfiguration trends = parseTrends(config);
+        validateConfigVersion(config, logger);
+        TrendConfiguration trends = parseTrends(config, logger);
+        long updateIntervalTicks = parseUpdateIntervalTicks(config, logger);
 
         return new PluginConfiguration(
                 stringOrDefault(config.getString("marker-set.id"), DEFAULT_MARKER_SET_ID),
@@ -118,29 +123,47 @@ public record PluginConfiguration(
                         config.getString("markers.timestamp-format", DEFAULT_TIMESTAMP_FORMAT),
                         logger
                 ),
-                Math.max(1, config.getInt("markers.height", 80)),
+                positiveInt(config, "markers.height", 80, logger),
                 parseColor(config.getString("markers.line-color", "#9b46ffff"), DEFAULT_LINE_COLOR, logger),
                 parseColor(config.getString("markers.fill-color", "#d2aaff59"), DEFAULT_FILL_COLOR, logger),
-                Math.max(1, config.getInt("markers.line-width", 2)),
+                positiveInt(config, "markers.line-width", 2, logger),
                 parseVisualization(config, logger),
                 trends,
                 parseLoadContext(config, logger),
-                Math.max(20L, config.getLong("update-interval-seconds", 5L) * 20L)
+                updateIntervalTicks
         );
     }
 
-    static TrendConfiguration parseTrends(FileConfiguration config) {
+    static long parseUpdateIntervalTicks(FileConfiguration config, Logger logger) {
+        return positiveLong(
+                config,
+                "update-interval-seconds",
+                DEFAULT_UPDATE_INTERVAL_SECONDS,
+                MAX_UPDATE_INTERVAL_SECONDS,
+                logger
+        ) * 20L;
+    }
+
+    static TrendConfiguration parseTrends(FileConfiguration config, Logger logger) {
         return new TrendConfiguration(
                 config.getBoolean("trends.enabled", true),
-                Duration.ofSeconds(Math.max(1L, config.getLong("trends.reset-after-seconds", 30L))),
-                Math.max(0.0D, config.getDouble("trends.sensitivity.tps", 0.10D)),
-                Math.max(0.0D, config.getDouble("trends.sensitivity.mspt", 1.0D)),
-                Math.max(
-                        0.0D,
-                        config.getDouble("trends.sensitivity.utilization-percentage-points", 2.0D) / 100.0D
-                ),
-                Math.max(0, config.getInt("trends.sensitivity.entities", 5)),
-                Math.max(0, config.getInt("trends.sensitivity.players", 1))
+                Duration.ofSeconds(positiveLong(
+                        config,
+                        "trends.reset-after-seconds",
+                        30L,
+                        MAX_UPDATE_INTERVAL_SECONDS,
+                        logger
+                )),
+                nonNegativeDouble(config, "trends.sensitivity.tps", 0.10D, logger),
+                nonNegativeDouble(config, "trends.sensitivity.mspt", 1.0D, logger),
+                nonNegativeDouble(
+                        config,
+                        "trends.sensitivity.utilization-percentage-points",
+                        2.0D,
+                        logger
+                ) / 100.0D,
+                nonNegativeInt(config, "trends.sensitivity.entities", 5, logger),
+                nonNegativeInt(config, "trends.sensitivity.players", 1, logger)
         );
     }
 
@@ -224,9 +247,9 @@ public record PluginConfiguration(
             Logger logger
     ) {
         PerformanceThresholds parsed = new PerformanceThresholds(
-                config.getDouble(path + ".warning", fallback.warning()),
-                config.getDouble(path + ".high", fallback.high()),
-                config.getDouble(path + ".critical", fallback.critical()),
+                finiteDouble(config, path + ".warning", fallback.warning(), logger),
+                finiteDouble(config, path + ".high", fallback.high(), logger),
+                finiteDouble(config, path + ".critical", fallback.critical(), logger),
                 fallback.lowerIsWorse()
         );
         if (parsed.isOrdered()) {
@@ -320,6 +343,123 @@ public record PluginConfiguration(
             return DEFAULT_DETAIL_FORMAT;
         }
         return responsive;
+    }
+
+    static void validateConfigVersion(FileConfiguration config, Logger logger) {
+        Object raw = config.get("config-version");
+        if (!(raw instanceof Number number)) {
+            logger.warning("Invalid config-version in config.yml; expected " + CONFIG_VERSION + ".");
+            return;
+        }
+        int configuredVersion = number.intValue();
+        if (configuredVersion > CONFIG_VERSION) {
+            logger.warning("config.yml was created for a newer plugin version (config-version "
+                    + configuredVersion + "); supported version is " + CONFIG_VERSION + ".");
+        } else if (configuredVersion < 1) {
+            logger.warning("Invalid config-version in config.yml; expected a value from 1 to "
+                    + CONFIG_VERSION + ".");
+        }
+    }
+
+    private static int positiveInt(
+            FileConfiguration config,
+            String path,
+            int fallback,
+            Logger logger
+    ) {
+        Object raw = config.get(path);
+        if (raw instanceof Number number && isWholeNumber(number)) {
+            long value = number.longValue();
+            if (value > 0L && value <= Integer.MAX_VALUE) {
+                return (int) value;
+            }
+        }
+        warnInvalidNumber(path, raw, fallback, logger);
+        return fallback;
+    }
+
+    private static int nonNegativeInt(
+            FileConfiguration config,
+            String path,
+            int fallback,
+            Logger logger
+    ) {
+        Object raw = config.get(path);
+        if (raw instanceof Number number && isWholeNumber(number)) {
+            long value = number.longValue();
+            if (value >= 0L && value <= Integer.MAX_VALUE) {
+                return (int) value;
+            }
+        }
+        warnInvalidNumber(path, raw, fallback, logger);
+        return fallback;
+    }
+
+    private static long positiveLong(
+            FileConfiguration config,
+            String path,
+            long fallback,
+            long maximum,
+            Logger logger
+    ) {
+        Object raw = config.get(path);
+        if (raw instanceof Number number && isWholeNumber(number)) {
+            long value = number.longValue();
+            if (value > 0L && value <= maximum) {
+                return value;
+            }
+        }
+        warnInvalidNumber(path, raw, fallback, logger);
+        return fallback;
+    }
+
+    private static double nonNegativeDouble(
+            FileConfiguration config,
+            String path,
+            double fallback,
+            Logger logger
+    ) {
+        Object raw = config.get(path);
+        if (raw instanceof Number number) {
+            double value = number.doubleValue();
+            if (Double.isFinite(value) && value >= 0.0D) {
+                return value;
+            }
+        }
+        warnInvalidNumber(path, raw, fallback, logger);
+        return fallback;
+    }
+
+    private static double finiteDouble(
+            FileConfiguration config,
+            String path,
+            double fallback,
+            Logger logger
+    ) {
+        Object raw = config.get(path);
+        if (raw instanceof Number number) {
+            double value = number.doubleValue();
+            if (Double.isFinite(value)) {
+                return value;
+            }
+        }
+        warnInvalidNumber(path, raw, fallback, logger);
+        return fallback;
+    }
+
+    private static boolean isWholeNumber(Number number) {
+        double value = number.doubleValue();
+        return Double.isFinite(value) && value == Math.rint(value);
+    }
+
+    private static void warnInvalidNumber(
+            String path,
+            Object configuredValue,
+            Object fallback,
+            Logger logger
+    ) {
+        logger.warning("Invalid " + path + " in config.yml: "
+                + String.valueOf(configuredValue) + "; using " + fallback + ".");
     }
 
     static String trendDetailFormat(String detailFormat, boolean trendsEnabled) {

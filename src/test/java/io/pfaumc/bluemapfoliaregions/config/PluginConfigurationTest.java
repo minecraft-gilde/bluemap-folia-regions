@@ -4,6 +4,11 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,7 +106,8 @@ class PluginConfigurationTest {
         config.set("trends.sensitivity.entities", 7);
         config.set("trends.sensitivity.players", 2);
 
-        TrendConfiguration trends = PluginConfiguration.parseTrends(config);
+        TrendConfiguration trends =
+                PluginConfiguration.parseTrends(config, Logger.getAnonymousLogger());
 
         assertTrue(trends.enabled());
         assertEquals(Duration.ofSeconds(45), trends.resetAfter());
@@ -156,5 +162,102 @@ class PluginConfigurationTest {
         assertTrue(context.enabled());
         assertEquals(8.0D, context.entityDensityThresholds().high());
         assertEquals(3_000.0D, context.regionChunkThresholds().critical());
+    }
+
+    @Test
+    void replacesInvalidTrendValuesAndLogsEachFallback() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("trends.enabled", true);
+        config.set("trends.reset-after-seconds", -1);
+        config.set("trends.sensitivity.tps", Double.NaN);
+        config.set("trends.sensitivity.mspt", -2.0D);
+        config.set("trends.sensitivity.utilization-percentage-points", -3.0D);
+        config.set("trends.sensitivity.entities", -4);
+        config.set("trends.sensitivity.players", -5);
+        RecordingLog log = new RecordingLog();
+
+        TrendConfiguration trends = PluginConfiguration.parseTrends(config, log.logger());
+
+        assertEquals(Duration.ofSeconds(30), trends.resetAfter());
+        assertEquals(0.10D, trends.minimumTpsChange());
+        assertEquals(1.0D, trends.minimumMsptChange());
+        assertEquals(0.02D, trends.minimumUtilizationChange());
+        assertEquals(5, trends.minimumEntityChange());
+        assertEquals(1, trends.minimumPlayerChange());
+        assertEquals(6, log.messages().size());
+        assertTrue(log.messages().stream().allMatch((message) -> message.contains("using")));
+    }
+
+    @Test
+    void rejectsUnsafeUpdateIntervals() {
+        YamlConfiguration config = new YamlConfiguration();
+        RecordingLog log = new RecordingLog();
+        config.set("update-interval-seconds", Long.MAX_VALUE);
+
+        long ticks = PluginConfiguration.parseUpdateIntervalTicks(config, log.logger());
+
+        assertEquals(100L, ticks);
+        assertTrue(log.messages().getFirst().contains("update-interval-seconds"));
+    }
+
+    @Test
+    void rejectsFractionalIntervalsAndNonFiniteThresholds() {
+        YamlConfiguration config = new YamlConfiguration();
+        RecordingLog log = new RecordingLog();
+        config.set("update-interval-seconds", 1.5D);
+        config.set("load-context.thresholds.entities-per-chunk.warning", Double.POSITIVE_INFINITY);
+        config.set("load-context.thresholds.entities-per-chunk.high", 16.0D);
+        config.set("load-context.thresholds.entities-per-chunk.critical", 32.0D);
+        config.set("load-context.thresholds.region-chunks.warning", 1500.0D);
+        config.set("load-context.thresholds.region-chunks.high", 3000.0D);
+        config.set("load-context.thresholds.region-chunks.critical", 5000.0D);
+
+        long ticks = PluginConfiguration.parseUpdateIntervalTicks(config, log.logger());
+        LoadContextConfiguration context = PluginConfiguration.parseLoadContext(config, log.logger());
+
+        assertEquals(100L, ticks);
+        assertEquals(8.0D, context.entityDensityThresholds().warning());
+        assertEquals(2, log.messages().size());
+    }
+
+    @Test
+    void warnsWhenConfigWasCreatedForANewerVersion() {
+        YamlConfiguration config = new YamlConfiguration();
+        RecordingLog log = new RecordingLog();
+        config.set("config-version", 99);
+
+        PluginConfiguration.validateConfigVersion(config, log.logger());
+
+        assertTrue(log.messages().getFirst().contains("newer plugin version"));
+    }
+
+    private static final class RecordingLog {
+        private final List<String> messages = new ArrayList<>();
+        private final Logger logger = Logger.getAnonymousLogger();
+
+        private RecordingLog() {
+            this.logger.setUseParentHandlers(false);
+            this.logger.setLevel(Level.ALL);
+            this.logger.addHandler(new Handler() {
+                @Override
+                public void publish(LogRecord record) {
+                    messages.add(record.getMessage());
+                }
+
+                @Override
+                public void flush() {}
+
+                @Override
+                public void close() {}
+            });
+        }
+
+        Logger logger() {
+            return this.logger;
+        }
+
+        List<String> messages() {
+            return List.copyOf(this.messages);
+        }
     }
 }

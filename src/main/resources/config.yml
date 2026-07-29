@@ -1,3 +1,5 @@
+config-version: 2
+
 update-interval-seconds: 5
 
 trends:

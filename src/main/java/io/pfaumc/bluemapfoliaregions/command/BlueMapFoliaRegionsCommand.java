@@ -87,6 +87,7 @@ public class BlueMapFoliaRegionsCommand extends Command {
     private void sendStatus(CommandSender sender) {
         RuntimeStatus status = this.plugin.getRuntimeStatus();
         sender.sendMessage("BlueMap Folia Regions status:");
+        sender.sendMessage("- Version: " + this.plugin.getPluginMeta().getVersion());
         sender.sendMessage("- BlueMap: " + (status.blueMapEnabled() ? "enabled" : "disabled"));
         sender.sendMessage("- Scheduled maps: " + status.scheduledMapCount());
         sender.sendMessage("- Update interval: " + status.updateIntervalTicks() / 20.0D + " seconds");
