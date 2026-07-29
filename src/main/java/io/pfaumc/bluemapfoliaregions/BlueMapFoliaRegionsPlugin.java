@@ -2,6 +2,7 @@ package io.pfaumc.bluemapfoliaregions;
 
 import de.bluecolored.bluemap.api.BlueMapAPI;
 import de.bluecolored.bluemap.api.BlueMapMap;
+import de.bluecolored.bluemap.api.BlueMapWorld;
 import de.bluecolored.bluemap.api.markers.MarkerSet;
 import de.bluecolored.bluemap.api.markers.ShapeMarker;
 import io.pfaumc.bluemapfoliaregions.command.BlueMapFoliaRegionsCommand;
@@ -21,11 +22,14 @@ import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import java.util.logging.Level;
 
 public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
@@ -152,8 +156,9 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
                 .toggleable(activeConfiguration.toggleable())
                 .build();
 
-        String id = map.getWorld().getId();
-        Optional<World> worldOptional = resolveWorld(id);
+        BlueMapWorld blueMapWorld = map.getWorld();
+        String id = blueMapWorld.getId();
+        Optional<World> worldOptional = resolveWorld(blueMapWorld);
         if (worldOptional.isEmpty()) {
             getLogger().warning("World not found for BlueMap world id: " + id);
             map.getMarkerSets().remove(activeConfiguration.markerSetId());
@@ -173,26 +178,56 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         return map.getWorld().getId() + ":" + map.getId();
     }
 
-    private Optional<World> resolveWorld(String id) {
+    private Optional<World> resolveWorld(BlueMapWorld blueMapWorld) {
+        Optional<Path> saveFolder = getSaveFolder(blueMapWorld);
+        if (saveFolder.isPresent()) {
+            Optional<World> byPath = findByWorldPath(Bukkit.getWorlds(), World::getWorldPath, saveFolder.get());
+            if (byPath.isPresent()) {
+                return byPath;
+            }
+        }
+
+        return resolveWorldByLegacyId(blueMapWorld.getId());
+    }
+
+    @SuppressWarnings("deprecation")
+    private Optional<Path> getSaveFolder(BlueMapWorld blueMapWorld) {
+        try {
+            return Optional.of(blueMapWorld.getSaveFolder());
+        } catch (UnsupportedOperationException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    static <T> Optional<T> findByWorldPath(
+            Collection<T> worlds,
+            Function<T, Path> pathProvider,
+            Path blueMapSaveFolder
+    ) {
+        Path expectedPath = blueMapSaveFolder.toAbsolutePath().normalize();
+        return worlds.stream()
+                .filter((world) -> pathProvider.apply(world).toAbsolutePath().normalize().equals(expectedPath))
+                .findFirst();
+    }
+
+    private Optional<World> resolveWorldByLegacyId(String id) {
         int hashIndex = id.indexOf('#');
         if (hashIndex != -1) {
             String worldName = id.substring(0, hashIndex);
-            World byName = Bukkit.getWorld(worldName);
-            if (byName != null) {
-                return Optional.of(byName);
-            }
-            Optional<World> byUuid = resolveWorldByUuid(worldName);
-            if (byUuid.isPresent()) {
-                return byUuid;
+            String dimensionId = id.substring(hashIndex + 1);
+            Optional<World> byNameOrUuid = resolveWorldByNameOrUuid(worldName)
+                    .filter((world) -> world.getKey().toString().equals(dimensionId));
+            if (byNameOrUuid.isPresent()) {
+                return byNameOrUuid;
             }
         }
 
-        Optional<World> byUuid = resolveWorldByUuid(id);
-        if (byUuid.isPresent()) {
-            return byUuid;
-        }
+        return resolveWorldByNameOrUuid(id);
+    }
 
-        return Optional.ofNullable(Bukkit.getWorld(id));
+    private Optional<World> resolveWorldByNameOrUuid(String id) {
+        World byName = Bukkit.getWorld(id);
+        return byName != null ? Optional.of(byName) : resolveWorldByUuid(id);
     }
 
     private Optional<World> resolveWorldByUuid(String id) {
