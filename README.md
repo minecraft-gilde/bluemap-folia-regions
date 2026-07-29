@@ -13,6 +13,9 @@ Zeigt Folia-Tick-Regionen als Marker-Overlay in **BlueMap** an.
 - Regions-ID, Chunk- und Blockzentrum, Sektionen, Chunks und Regionsfläche
 - Entitäten und Spieler einschließlich Dichte pro Chunk
 - Konfigurierbare Markerbezeichnung und HTML-Detailansicht
+- TPS, durchschnittliche MSPT und schlechteste 5 % beziehungsweise 1 % der Tickzeiten
+- Regionsauslastung über auswählbare Zeitfenster von 5 Sekunden bis 15 Minuten
+- Heatmap nach Auslastung, MSPT oder TPS mit konfigurierbaren Statusfarben
 - Zeitpunkt der letzten Datenerfassung
 - Laufzeitstatus und manuelles Aktualisieren per Befehl
 - Standardmäßig ausgeblendet und in BlueMap umschaltbar
@@ -38,6 +41,41 @@ Beim ersten Start wird `plugins/BlueMap-Folia-Regions/config.yml` erstellt.
 ```yaml
 update-interval-seconds: 5
 
+visualization:
+  # static, utilization, mspt oder tps
+  mode: utilization
+  # 5s, 15s, 1m, 5m oder 15m
+  report-window: 15s
+  thresholds:
+    utilization:
+      warning: 0.60
+      high: 0.75
+      critical: 0.90
+    mspt:
+      warning: 25.0
+      high: 40.0
+      critical: 50.0
+    tps:
+      warning: 19.5
+      high: 18.0
+      critical: 15.0
+  colors:
+    normal:
+      line-color: "#37b24dff"
+      fill-color: "#51cf6666"
+    warning:
+      line-color: "#f08c00ff"
+      fill-color: "#ffd43b73"
+    high:
+      line-color: "#e8590cff"
+      fill-color: "#ff922b80"
+    critical:
+      line-color: "#c92a2aff"
+      fill-color: "#fa525299"
+    unavailable:
+      line-color: "#9b46ffff"
+      fill-color: "#d2aaff59"
+
 marker-set:
   id: folia-regions
   label: Folia Tick-Regionen
@@ -47,15 +85,38 @@ marker-set:
 markers:
   label-format: "Region[{center_x},{center_z}]"
   detail-format: |-
-    <b>Folia-Region {region_id}</b><br>
-    Welt: {world}<br>
-    Zentrum: Chunk {center_chunk_x}, {center_chunk_z} / Block {center_block_x}, {center_block_z}<br>
-    Sektionen: {sections}<br>
-    Chunks: {chunks}<br>
-    Regionsfl&auml;che: {area_blocks} Bl&ouml;cke&sup2;<br>
-    Entit&auml;ten: {entities} ({entities_per_chunk}/Chunk)<br>
-    Spieler: {players} ({players_per_chunk}/Chunk)<br>
-    Aktualisiert: {updated_at}
+    <div style="width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <strong style="font-size:18px">Folia-Region {region_id}</strong>
+        <span style="color:{status_color};border:1px solid {status_color};border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700">{status}</span>
+      </div>
+      <div style="margin-top:3px;opacity:.65;font-size:12px">{world} &middot; Chunk {center_chunk_x}, {center_chunk_z} &middot; Block {center_block_x}, {center_block_z}</div>
+      <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
+        <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">REGION</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+          <div><strong>{sections_formatted}</strong><div style="opacity:.6;font-size:11px">Sektionen</div></div>
+          <div><strong>{chunks_formatted}</strong><div style="opacity:.6;font-size:11px">Chunks</div></div>
+          <div><strong>{area_blocks_formatted}</strong><div style="opacity:.6;font-size:11px">Bl&ouml;cke&sup2;</div></div>
+        </div>
+      </div>
+      <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
+        <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">AKTIVIT&Auml;T</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+          <div><strong>{entities_formatted}</strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
+          <div><strong>{players_formatted}</strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
+        </div>
+      </div>
+      <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
+        <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">LEISTUNG &middot; {report_window}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+          <div><strong>{tps}</strong><div style="opacity:.6;font-size:11px">TPS</div></div>
+          <div><strong>{mspt} ms</strong><div style="opacity:.6;font-size:11px">&Oslash; Tickzeit</div></div>
+          <div><strong>{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
+        </div>
+        <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
+      </div>
+      <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
+    </div>
   timestamp-format: "yyyy-MM-dd HH:mm:ss z"
   height: 80
   line-color: "#9b46ffff"
@@ -72,11 +133,22 @@ Für `markers.label-format` und `markers.detail-format` stehen folgende Platzhal
 - `{center_chunk_x}`, `{center_chunk_z}`
 - `{center_block_x}`, `{center_block_z}`
 - `{sections}`, `{chunks}`, `{area_blocks}`
+- `{sections_formatted}`, `{chunks_formatted}`, `{area_blocks_formatted}`
 - `{entities}`, `{players}`
+- `{entities_formatted}`, `{players_formatted}`
 - `{entities_per_chunk}`, `{players_per_chunk}`
+- `{report_window}`, `{collected_ticks}`, `{collected_ticks_formatted}`, `{tps}`, `{mspt}`
+- `{mspt_worst_5}`, `{mspt_worst_1}`, `{utilization}`
+- `{status}` für den schlechtesten Gesamtstatus aller Leistungsmetriken
+- `{status_color}` als zugehörige CSS-Farbe
+- `{visualization_status}` für den Status der aktuell ausgewählten Heatmap-Metrik
+- `{visualization_color}` als zugehörige CSS-Farbe
+- `{visualization_mode}`
 - `{updated_at}`
 
 Unbekannte Platzhalter bleiben unverändert. Dynamische Werte in der HTML-Detailansicht werden automatisch maskiert.
+
+Im Modus `static` werden weiterhin `markers.line-color` und `markers.fill-color` verwendet. Die übrigen Modi wählen die Farbe anhand der zugehörigen Schwellenwerte. Solange Folia noch nicht genügend Tickdaten gesammelt hat, wird die Farbe `unavailable` verwendet.
 
 ## Befehle
 

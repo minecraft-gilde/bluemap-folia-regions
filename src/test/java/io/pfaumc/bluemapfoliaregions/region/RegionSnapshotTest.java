@@ -1,5 +1,7 @@
 package io.pfaumc.bluemapfoliaregions.region;
 
+import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -57,6 +59,7 @@ class RegionSnapshotTest {
                 chunks,
                 entities,
                 players,
+                RegionPerformanceSnapshot.unavailable(ReportWindow.FIFTEEN_SECONDS),
                 Instant.parse("2026-07-29T10:15:30Z")
         );
     }

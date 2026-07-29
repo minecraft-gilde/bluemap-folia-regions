@@ -1,5 +1,7 @@
 package io.pfaumc.bluemapfoliaregions.region;
 
+import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -17,11 +19,13 @@ public record RegionSnapshot(
         int chunkCount,
         int entityCount,
         int playerCount,
+        RegionPerformanceSnapshot performance,
         Instant capturedAt
 ) {
     public RegionSnapshot {
         worldName = Objects.requireNonNull(worldName, "worldName");
         sections = List.copyOf(sections);
+        performance = Objects.requireNonNull(performance, "performance");
         capturedAt = Objects.requireNonNull(capturedAt, "capturedAt");
         if (sectionBlockSize <= 0) {
             throw new IllegalArgumentException("sectionBlockSize must be positive");

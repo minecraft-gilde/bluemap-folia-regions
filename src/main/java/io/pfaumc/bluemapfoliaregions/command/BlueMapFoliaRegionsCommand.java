@@ -90,6 +90,8 @@ public class BlueMapFoliaRegionsCommand extends Command {
         sender.sendMessage("- BlueMap: " + (status.blueMapEnabled() ? "enabled" : "disabled"));
         sender.sendMessage("- Scheduled maps: " + status.scheduledMapCount());
         sender.sendMessage("- Update interval: " + status.updateIntervalTicks() / 20.0D + " seconds");
+        sender.sendMessage("- Visualization: " + status.visualizationMode().configValue()
+                + " over " + status.reportWindow().configValue());
         if (status.maps().isEmpty()) {
             sender.sendMessage("- No map update has completed yet.");
             return;

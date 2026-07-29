@@ -8,6 +8,8 @@ import io.pfaumc.bluemapfoliaregions.command.BlueMapFoliaRegionsCommand;
 import io.pfaumc.bluemapfoliaregions.config.PluginConfiguration;
 import io.pfaumc.bluemapfoliaregions.marker.RegionMarkerFactory;
 import io.pfaumc.bluemapfoliaregions.marker.RegionMarkerFactory.MarkerBuildResult;
+import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
+import io.pfaumc.bluemapfoliaregions.performance.VisualizationMode;
 import io.papermc.paper.threadedregions.ThreadedRegionizer;
 import io.papermc.paper.threadedregions.TickRegions;
 import io.papermc.paper.threadedregions.TickRegions.TickRegionData;
@@ -213,6 +215,8 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
                 this.currentApi != null,
                 this.tasks.size(),
                 this.configuration.updateIntervalTicks(),
+                this.configuration.visualization().mode(),
+                this.configuration.visualization().reportWindow(),
                 List.copyOf(statuses)
         );
     }
@@ -333,6 +337,8 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
             boolean blueMapEnabled,
             int scheduledMapCount,
             long updateIntervalTicks,
+            VisualizationMode visualizationMode,
+            ReportWindow reportWindow,
             List<MapUpdateStatus> maps
     ) {}
 
