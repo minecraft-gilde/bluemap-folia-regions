@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RegionTrendTrackerTest {
     private static final TrendConfiguration CONFIGURATION =
-            new TrendConfiguration(true, Duration.ofSeconds(30), 0.10D, 1.0D, 0.02D);
+            new TrendConfiguration(true, Duration.ofSeconds(30), 0.10D, 1.0D, 0.02D, 5, 1);
     private static final MarkerColors COLORS =
             new MarkerColors(new Color(0, 0, 0), new Color(255, 255, 255));
     private static final VisualizationConfiguration VISUALIZATION = new VisualizationConfiguration(
@@ -52,6 +52,8 @@ class RegionTrendTrackerTest {
         assertEquals(TrendDirection.WORSENING, second.tps());
         assertEquals(TrendDirection.IMPROVING, second.mspt());
         assertEquals(TrendDirection.WORSENING, second.utilization());
+        assertEquals(ValueTrend.STABLE, second.entities());
+        assertEquals(ValueTrend.STABLE, second.players());
         assertTrue(second.tickSpike());
         assertTrue(second.warningActive());
         assertEquals(Duration.ofSeconds(10), second.warningDuration());
@@ -100,6 +102,65 @@ class RegionTrendTrackerTest {
         assertEquals(TrendDirection.STABLE, RegionTrendTracker.classify(20.0D, 19.95D, 0.10D, true));
         assertEquals(TrendDirection.STABLE, RegionTrendTracker.classify(10.0D, 10.5D, 1.0D, false));
         assertEquals(TrendDirection.STABLE, RegionTrendTracker.classify(10.0D, 10.0D, 0.0D, false));
+        assertEquals(ValueTrend.STABLE, RegionTrendTracker.classifyValue(100, 104, 5));
+        assertEquals(ValueTrend.INCREASING, RegionTrendTracker.classifyValue(100, 105, 5));
+        assertEquals(ValueTrend.DECREASING, RegionTrendTracker.classifyValue(2, 1, 1));
+    }
+
+    @Test
+    void tracksEntityAndPlayerCountsWithoutTreatingThemAsHealthDirections() {
+        RegionTrendTracker tracker = new RegionTrendTracker(CONFIGURATION);
+        Instant firstCapture = Instant.parse("2026-07-29T10:00:00Z");
+        tracker.update(
+                List.of(snapshot(
+                        firstCapture,
+                        List.of(1L),
+                        20.0D,
+                        10.0D,
+                        0.20D,
+                        20.0D,
+                        10,
+                        2
+                )),
+                VISUALIZATION
+        );
+
+        RegionTrendSnapshot trend = tracker.update(
+                List.of(snapshot(
+                        firstCapture.plusSeconds(5),
+                        List.of(1L),
+                        20.0D,
+                        10.0D,
+                        0.20D,
+                        20.0D,
+                        15,
+                        1
+                )),
+                VISUALIZATION
+        ).get(42L);
+
+        assertEquals(ValueTrend.INCREASING, trend.entities());
+        assertEquals(ValueTrend.DECREASING, trend.players());
+    }
+
+    @Test
+    void tracksActivityEvenWhenPerformanceDataIsUnavailable() {
+        RegionTrendTracker tracker = new RegionTrendTracker(CONFIGURATION);
+        Instant firstCapture = Instant.parse("2026-07-29T10:00:00Z");
+        tracker.update(
+                List.of(unavailableSnapshot(firstCapture, 10, 1)),
+                VISUALIZATION
+        );
+
+        RegionTrendSnapshot trend = tracker.update(
+                List.of(unavailableSnapshot(firstCapture.plusSeconds(5), 15, 2)),
+                VISUALIZATION
+        ).get(42L);
+
+        assertFalse(trend.comparisonAvailable());
+        assertEquals(ValueTrend.INCREASING, trend.entities());
+        assertEquals(ValueTrend.INCREASING, trend.players());
+        assertEquals(TrendDirection.UNAVAILABLE, trend.tps());
     }
 
     private static RegionSnapshot snapshot(
@@ -110,6 +171,28 @@ class RegionTrendTrackerTest {
             double utilization,
             double worstOnePercentMspt
     ) {
+        return snapshot(
+                capturedAt,
+                sections,
+                tps,
+                mspt,
+                utilization,
+                worstOnePercentMspt,
+                12,
+                2
+        );
+    }
+
+    private static RegionSnapshot snapshot(
+            Instant capturedAt,
+            List<Long> sections,
+            double tps,
+            double mspt,
+            double utilization,
+            double worstOnePercentMspt,
+            int entities,
+            int players
+    ) {
         return new RegionSnapshot(
                 42L,
                 "world",
@@ -118,8 +201,8 @@ class RegionTrendTrackerTest {
                 sections,
                 128,
                 8,
-                12,
-                2,
+                entities,
+                players,
                 new RegionPerformanceSnapshot(
                         true,
                         ReportWindow.FIFTEEN_SECONDS,
@@ -130,6 +213,22 @@ class RegionTrendTrackerTest {
                         worstOnePercentMspt,
                         utilization
                 ),
+                capturedAt
+        );
+    }
+
+    private static RegionSnapshot unavailableSnapshot(Instant capturedAt, int entities, int players) {
+        return new RegionSnapshot(
+                42L,
+                "world",
+                10,
+                -20,
+                List.of(1L),
+                128,
+                8,
+                entities,
+                players,
+                RegionPerformanceSnapshot.unavailable(ReportWindow.FIFTEEN_SECONDS),
                 capturedAt
         );
     }

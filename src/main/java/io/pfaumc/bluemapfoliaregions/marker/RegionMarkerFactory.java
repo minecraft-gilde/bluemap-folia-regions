@@ -93,6 +93,7 @@ public class RegionMarkerFactory {
                     configuration.markerLabelFormat(),
                     snapshot,
                     trend,
+                    configuration.loadContext(),
                     configuration.visualization(),
                     configuration.markerTimestampFormatter()
             );
@@ -100,6 +101,7 @@ public class RegionMarkerFactory {
                     configuration.markerDetailFormat(),
                     snapshot,
                     trend,
+                    configuration.loadContext(),
                     configuration.visualization(),
                     configuration.markerTimestampFormatter()
             );

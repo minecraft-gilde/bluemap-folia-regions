@@ -19,6 +19,8 @@ Zeigt Folia-Tick-Regionen als Marker-Overlay in **BlueMap** an.
 - Kurzzeit-Trends für TPS, Tickzeit und Auslastung sowie Erkennung kritischer Tickspitzen
 - Dauer eines ununterbrochenen Warnzustands
 - Eigene Statusfarbe pro Leistungswert und kompakte Ursachenanalyse mit Schwellenwert
+- Neutrale Aktivitätstrends für Entitäten und Spieler
+- Optionaler Belastungskontext für hohe Entitätsdichte und ungewöhnlich große Regionen
 - Zeitpunkt der letzten Datenerfassung
 - Laufzeitstatus und manuelles Aktualisieren per Befehl
 - Standardmäßig ausgeblendet und in BlueMap umschaltbar
@@ -53,6 +55,21 @@ trends:
     tps: 0.10
     mspt: 1.0
     utilization-percentage-points: 2.0
+    # Absolute Anzahländerungen unterhalb dieser Werte gelten als stabil
+    entities: 5
+    players: 1
+
+load-context:
+  enabled: true
+  thresholds:
+    entities-per-chunk:
+      warning: 8.0
+      high: 16.0
+      critical: 32.0
+    region-chunks:
+      warning: 1500
+      high: 3000
+      critical: 5000
 
 visualization:
   # static, utilization, mspt oder tps
@@ -113,11 +130,12 @@ markers:
         </div>
       </div>
       <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
-        <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">AKTIVIT&Auml;T</div>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
-          <div><strong>{entities_formatted}</strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
-          <div><strong>{players_formatted}</strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
-        </div>
+      <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">AKTIVIT&Auml;T</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+        <div><strong>{entities_formatted} <span style="color:{entities_trend_color};font-size:11px">{entities_trend}</span></strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
+        <div><strong>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
+      </div>
+      <div style="display:{load_context_display};margin-top:6px;opacity:.65;font-size:11px;line-height:1.35;overflow-wrap:anywhere">{load_context}</div>
       </div>
       <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
       <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">LEISTUNG &middot; {report_window}</div>
@@ -152,6 +170,10 @@ Für `markers.label-format` und `markers.detail-format` stehen folgende Platzhal
 - `{entities}`, `{players}`
 - `{entities_formatted}`, `{players_formatted}`
 - `{entities_per_chunk}`, `{players_per_chunk}`
+- `{entities_trend}`, `{players_trend}` als neutrale Aktivitätsrichtungen
+- `{entities_trend_status}`, `{players_trend_status}`
+- `{entities_trend_color}`, `{players_trend_color}`
+- `{load_context}`, `{load_context_display}`
 - `{report_window}`, `{collected_ticks}`, `{collected_ticks_formatted}`, `{tps}`, `{mspt}`
 - `{mspt_worst_5}`, `{mspt_worst_1}`, `{utilization}`
 - `{tps_status}`, `{mspt_status}`, `{utilization_status}`
@@ -177,6 +199,8 @@ Im Modus `static` werden weiterhin `markers.line-color` und `markers.fill-color`
 Trends vergleichen eine Region mit ihrer vorherigen erfolgreichen Erfassung. Grün kennzeichnet eine Verbesserung, Rot eine Verschlechterung und Grau einen stabilen Wert. Nach einer Änderung der zugehörigen Sektionen oder nach Ablauf von `trends.reset-after-seconds` beginnt die Erfassung neu. Dadurch werden dynamisch geteilte oder zusammengeführte Folia-Regionen nicht miteinander verglichen. Die Trendhistorie wird nur im Arbeitsspeicher gehalten und bei einem Reload oder Serverneustart zurückgesetzt.
 
 Die Farbe eines Leistungswertes beschreibt seinen aktuellen Status; der daneben angezeigte Trend beschreibt dagegen seine zeitliche Entwicklung. So kann ein kritischer Wert gleichzeitig einen grünen Verbesserungstrend besitzen. Die Diagnose nennt alle auffälligen Metriken, beginnend mit der schwerwiegendsten, und zeigt den jeweils erreichten Schwellenwert.
+
+Die Pfeile bei Entitäten und Spielern zeigen ausschließlich, ob sich ihre Anzahl erhöht, verringert oder stabil entwickelt hat. Sie verwenden deshalb bewusst keine roten oder grünen Bewertungsfarben. Der Belastungskontext erscheint nur, wenn mindestens ein Wert die unter `load-context.thresholds` konfigurierte Schwelle erreicht. Er beschreibt gleichzeitig vorhandene Auffälligkeiten, ohne daraus automatisch eine Ursache für die Regionsleistung abzuleiten.
 
 ## Befehle
 

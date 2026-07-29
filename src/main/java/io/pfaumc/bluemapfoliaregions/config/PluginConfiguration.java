@@ -27,6 +27,7 @@ public record PluginConfiguration(
         int markerLineWidth,
         VisualizationConfiguration visualization,
         TrendConfiguration trends,
+        LoadContextConfiguration loadContext,
         long updateIntervalTicks
 ) {
     private static final String DEFAULT_MARKER_SET_ID = "folia-regions";
@@ -50,9 +51,10 @@ public record PluginConfiguration(
               <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
                 <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">AKTIVIT&Auml;T</div>
                 <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
-                  <div><strong>{entities_formatted}</strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
-                  <div><strong>{players_formatted}</strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
+                  <div><strong>{entities_formatted} <span style="color:{entities_trend_color};font-size:11px">{entities_trend}</span></strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
+                  <div><strong>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
                 </div>
+                <div style="display:{load_context_display};margin-top:6px;opacity:.65;font-size:11px;line-height:1.35;overflow-wrap:anywhere">{load_context}</div>
               </div>
               <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
                 <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">LEISTUNG &middot; {report_window}</div>
@@ -92,6 +94,10 @@ public record PluginConfiguration(
             new PerformanceThresholds(25.0D, 40.0D, 50.0D, false);
     private static final PerformanceThresholds DEFAULT_TPS_THRESHOLDS =
             new PerformanceThresholds(19.5D, 18.0D, 15.0D, true);
+    private static final PerformanceThresholds DEFAULT_ENTITY_DENSITY_THRESHOLDS =
+            new PerformanceThresholds(8.0D, 16.0D, 32.0D, false);
+    private static final PerformanceThresholds DEFAULT_REGION_CHUNK_THRESHOLDS =
+            new PerformanceThresholds(1_500.0D, 3_000.0D, 5_000.0D, false);
 
     public static PluginConfiguration from(JavaPlugin plugin) {
         FileConfiguration config = plugin.getConfig();
@@ -118,6 +124,7 @@ public record PluginConfiguration(
                 Math.max(1, config.getInt("markers.line-width", 2)),
                 parseVisualization(config, logger),
                 trends,
+                parseLoadContext(config, logger),
                 Math.max(20L, config.getLong("update-interval-seconds", 5L) * 20L)
         );
     }
@@ -131,6 +138,26 @@ public record PluginConfiguration(
                 Math.max(
                         0.0D,
                         config.getDouble("trends.sensitivity.utilization-percentage-points", 2.0D) / 100.0D
+                ),
+                Math.max(0, config.getInt("trends.sensitivity.entities", 5)),
+                Math.max(0, config.getInt("trends.sensitivity.players", 1))
+        );
+    }
+
+    static LoadContextConfiguration parseLoadContext(FileConfiguration config, Logger logger) {
+        return new LoadContextConfiguration(
+                config.getBoolean("load-context.enabled", true),
+                parseThresholds(
+                        config,
+                        "load-context.thresholds.entities-per-chunk",
+                        DEFAULT_ENTITY_DENSITY_THRESHOLDS,
+                        logger
+                ),
+                parseThresholds(
+                        config,
+                        "load-context.thresholds.region-chunks",
+                        DEFAULT_REGION_CHUNK_THRESHOLDS,
+                        logger
                 )
         );
     }
@@ -286,6 +313,12 @@ public record PluginConfiguration(
                 && !responsive.contains("{diagnosis}")) {
             return DEFAULT_DETAIL_FORMAT;
         }
+        if (responsive.contains(
+                "width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25"
+        ) && responsive.contains("{diagnosis}")
+                && !responsive.contains("{load_context}")) {
+            return DEFAULT_DETAIL_FORMAT;
+        }
         return responsive;
     }
 
@@ -293,12 +326,23 @@ public record PluginConfiguration(
         if (trendsEnabled) {
             return detailFormat;
         }
-        return detailFormat.lines()
+        String withoutPerformanceTrend = detailFormat.lines()
                 .filter((line) -> !line.contains(">Trend: TPS ")
                         || !line.contains("{tps_trend}")
                         || !line.contains("{mspt_trend}")
                         || !line.contains("{utilization_trend}"))
                 .collect(java.util.stream.Collectors.joining("\n"));
+        return withoutPerformanceTrend
+                .replace(
+                        " <span style=\"color:{entities_trend_color};font-size:11px\">"
+                                + "{entities_trend}</span>",
+                        ""
+                )
+                .replace(
+                        " <span style=\"color:{players_trend_color};font-size:11px\">"
+                                + "{players_trend}</span>",
+                        ""
+                );
     }
 
     private static Color parseColor(String value, Color fallback, Logger logger) {

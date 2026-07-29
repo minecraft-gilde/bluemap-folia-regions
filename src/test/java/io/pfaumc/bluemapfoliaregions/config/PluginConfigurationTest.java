@@ -4,6 +4,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -76,11 +77,17 @@ class PluginConfigurationTest {
         String detail = """
                 <div>Leistung</div>
                 <div>Trend: TPS {tps_trend} · Tickzeit {mspt_trend} · Auslastung {utilization_trend}</div>
+                <div>{entities_formatted} <span style="color:{entities_trend_color};font-size:11px">{entities_trend}</span></div>
+                <div>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></div>
                 <div>Stand</div>""";
 
         String result = PluginConfiguration.trendDetailFormat(detail, false);
 
-        assertEquals("<div>Leistung</div>\n<div>Stand</div>", result);
+        assertEquals(
+                "<div>Leistung</div>\n<div>{entities_formatted}</div>\n"
+                        + "<div>{players_formatted}</div>\n<div>Stand</div>",
+                result
+        );
     }
 
     @Test
@@ -91,6 +98,8 @@ class PluginConfigurationTest {
         config.set("trends.sensitivity.tps", 0.2D);
         config.set("trends.sensitivity.mspt", 2.5D);
         config.set("trends.sensitivity.utilization-percentage-points", 3.0D);
+        config.set("trends.sensitivity.entities", 7);
+        config.set("trends.sensitivity.players", 2);
 
         TrendConfiguration trends = PluginConfiguration.parseTrends(config);
 
@@ -99,6 +108,8 @@ class PluginConfigurationTest {
         assertEquals(0.2D, trends.minimumTpsChange());
         assertEquals(2.5D, trends.minimumMsptChange());
         assertEquals(0.03D, trends.minimumUtilizationChange());
+        assertEquals(7, trends.minimumEntityChange());
+        assertEquals(2, trends.minimumPlayerChange());
     }
 
     @Test
@@ -113,5 +124,37 @@ class PluginConfigurationTest {
 
         assertTrue(migrated.contains("color:{tps_status_color}"));
         assertTrue(migrated.contains("{diagnosis}"));
+    }
+
+    @Test
+    void upgradesDiagnosticLayoutToLoadContextLayout() {
+        String previous = """
+                <div style="width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25">
+                  <div>{diagnosis}</div>
+                </div>""";
+
+        String migrated = PluginConfiguration.detailFormatOrDefault(previous);
+
+        assertTrue(migrated.contains("{entities_trend}"));
+        assertTrue(migrated.contains("{load_context}"));
+    }
+
+    @Test
+    void parsesLoadContextThresholds() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("load-context.enabled", true);
+        config.set("load-context.thresholds.entities-per-chunk.warning", 4.0D);
+        config.set("load-context.thresholds.entities-per-chunk.high", 8.0D);
+        config.set("load-context.thresholds.entities-per-chunk.critical", 12.0D);
+        config.set("load-context.thresholds.region-chunks.warning", 1000.0D);
+        config.set("load-context.thresholds.region-chunks.high", 2000.0D);
+        config.set("load-context.thresholds.region-chunks.critical", 3000.0D);
+
+        LoadContextConfiguration context =
+                PluginConfiguration.parseLoadContext(config, Logger.getAnonymousLogger());
+
+        assertTrue(context.enabled());
+        assertEquals(8.0D, context.entityDensityThresholds().high());
+        assertEquals(3_000.0D, context.regionChunkThresholds().critical());
     }
 }

@@ -1,12 +1,14 @@
 package io.pfaumc.bluemapfoliaregions.marker;
 
 import de.bluecolored.bluemap.api.math.Color;
+import io.pfaumc.bluemapfoliaregions.config.LoadContextConfiguration;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration;
 import io.pfaumc.bluemapfoliaregions.performance.PerformanceThresholds;
 import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.RegionStatus;
 import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.TrendDirection;
+import io.pfaumc.bluemapfoliaregions.performance.ValueTrend;
 import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 
 import java.text.NumberFormat;
@@ -36,6 +38,7 @@ final class RegionTextFormatter {
                 format,
                 snapshot,
                 noTrend(),
+                LoadContextConfiguration.disabled(),
                 visualization,
                 timestampFormatter
         );
@@ -48,7 +51,33 @@ final class RegionTextFormatter {
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter
     ) {
-        return format(format, snapshot, trend, visualization, timestampFormatter, Function.identity());
+        return formatLabel(
+                format,
+                snapshot,
+                trend,
+                LoadContextConfiguration.disabled(),
+                visualization,
+                timestampFormatter
+        );
+    }
+
+    static String formatLabel(
+            String format,
+            RegionSnapshot snapshot,
+            RegionTrendSnapshot trend,
+            LoadContextConfiguration loadContext,
+            VisualizationConfiguration visualization,
+            DateTimeFormatter timestampFormatter
+    ) {
+        return format(
+                format,
+                snapshot,
+                trend,
+                loadContext,
+                visualization,
+                timestampFormatter,
+                Function.identity()
+        );
     }
 
     static String formatDetail(
@@ -61,6 +90,7 @@ final class RegionTextFormatter {
                 format,
                 snapshot,
                 noTrend(),
+                LoadContextConfiguration.disabled(),
                 visualization,
                 timestampFormatter
         );
@@ -73,10 +103,29 @@ final class RegionTextFormatter {
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter
     ) {
+        return formatDetail(
+                format,
+                snapshot,
+                trend,
+                LoadContextConfiguration.disabled(),
+                visualization,
+                timestampFormatter
+        );
+    }
+
+    static String formatDetail(
+            String format,
+            RegionSnapshot snapshot,
+            RegionTrendSnapshot trend,
+            LoadContextConfiguration loadContext,
+            VisualizationConfiguration visualization,
+            DateTimeFormatter timestampFormatter
+    ) {
         return format(
                 format,
                 snapshot,
                 trend,
+                loadContext,
                 visualization,
                 timestampFormatter,
                 RegionTextFormatter::escapeHtml
@@ -87,6 +136,7 @@ final class RegionTextFormatter {
             String format,
             RegionSnapshot snapshot,
             RegionTrendSnapshot trend,
+            LoadContextConfiguration loadContext,
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter,
             Function<String, String> valueSanitizer
@@ -97,6 +147,7 @@ final class RegionTextFormatter {
         RegionStatus tpsStatus = visualization.tpsStatus(performance);
         RegionStatus msptStatus = visualization.msptStatus(performance);
         RegionStatus utilizationStatus = visualization.utilizationStatus(performance);
+        LoadContextText contextText = loadContext(snapshot, loadContext);
         String unavailable = "n/a";
         Map<String, String> values = Map.ofEntries(
                 Map.entry("region_id", Long.toString(snapshot.regionId())),
@@ -119,6 +170,14 @@ final class RegionTextFormatter {
                 Map.entry("players_formatted", formatInteger(snapshot.playerCount())),
                 Map.entry("entities_per_chunk", formatDensity(snapshot.entitiesPerChunk())),
                 Map.entry("players_per_chunk", formatDensity(snapshot.playersPerChunk())),
+                Map.entry("entities_trend", valueTrendSymbol(trend.entities())),
+                Map.entry("entities_trend_status", valueTrendDisplayName(trend.entities())),
+                Map.entry("entities_trend_color", valueTrendColor(trend.entities())),
+                Map.entry("players_trend", valueTrendSymbol(trend.players())),
+                Map.entry("players_trend_status", valueTrendDisplayName(trend.players())),
+                Map.entry("players_trend_color", valueTrendColor(trend.players())),
+                Map.entry("load_context", contextText.text()),
+                Map.entry("load_context_display", contextText.visible() ? "block" : "none"),
                 Map.entry("report_window", performance.reportWindow().configValue()),
                 Map.entry("collected_ticks", Integer.toString(performance.collectedTicks())),
                 Map.entry("collected_ticks_formatted", formatInteger(performance.collectedTicks())),
@@ -238,6 +297,32 @@ final class RegionTextFormatter {
         };
     }
 
+    private static String valueTrendSymbol(ValueTrend trend) {
+        return switch (trend) {
+            case INCREASING -> "↑";
+            case STABLE -> "→";
+            case DECREASING -> "↓";
+            case UNAVAILABLE -> "–";
+        };
+    }
+
+    private static String valueTrendDisplayName(ValueTrend trend) {
+        return switch (trend) {
+            case INCREASING -> "Steigend";
+            case STABLE -> "Stabil";
+            case DECREASING -> "Fallend";
+            case UNAVAILABLE -> "Keine Vergleichsdaten";
+        };
+    }
+
+    private static String valueTrendColor(ValueTrend trend) {
+        return switch (trend) {
+            case INCREASING, DECREASING -> "rgba(255,255,255,.75)";
+            case STABLE -> "rgba(255,255,255,.45)";
+            case UNAVAILABLE -> "rgba(255,255,255,.30)";
+        };
+    }
+
     private static String metricStatusColor(
             VisualizationConfiguration visualization,
             RegionStatus status
@@ -291,6 +376,55 @@ final class RegionTextFormatter {
                 " · ",
                 causes.stream().map(RegionTextFormatter::formatCause).toList()
         );
+    }
+
+    private static LoadContextText loadContext(
+            RegionSnapshot snapshot,
+            LoadContextConfiguration configuration
+    ) {
+        if (!configuration.enabled()) {
+            return new LoadContextText(false, "");
+        }
+
+        List<String> indicators = new ArrayList<>(2);
+        RegionStatus entityDensityStatus =
+                configuration.entityDensityThresholds().classify(snapshot.entitiesPerChunk());
+        if (isProblemStatus(entityDensityStatus)) {
+            indicators.add(
+                    "Entitätsdichte: "
+                            + entityDensityStatus.displayName()
+                            + " ("
+                            + formatDensity(snapshot.entitiesPerChunk())
+                            + " ≥ "
+                            + formatDensity(configuration.entityDensityThresholds().thresholdFor(entityDensityStatus))
+                            + " Entitäten/Chunk)"
+            );
+        }
+
+        RegionStatus regionSizeStatus =
+                configuration.regionChunkThresholds().classify(snapshot.chunkCount());
+        if (isProblemStatus(regionSizeStatus)) {
+            indicators.add(
+                    "Regionsgröße: "
+                            + regionSizeStatus.displayName()
+                            + " ("
+                            + formatInteger(snapshot.chunkCount())
+                            + " ≥ "
+                            + formatInteger(Math.round(
+                                    configuration.regionChunkThresholds().thresholdFor(regionSizeStatus)
+                            ))
+                            + " Chunks)"
+            );
+        }
+        return indicators.isEmpty()
+                ? new LoadContextText(false, "")
+                : new LoadContextText(true, "Kontext: " + String.join(" · ", indicators));
+    }
+
+    private static boolean isProblemStatus(RegionStatus status) {
+        return status == RegionStatus.WARNING
+                || status == RegionStatus.HIGH
+                || status == RegionStatus.CRITICAL;
     }
 
     private static void addCause(
@@ -348,6 +482,8 @@ final class RegionTextFormatter {
             double value,
             double scale
     ) {}
+
+    private record LoadContextText(boolean visible, String text) {}
 
     private static String formatMetric(double value) {
         return String.format(Locale.ROOT, "%.2f", value);

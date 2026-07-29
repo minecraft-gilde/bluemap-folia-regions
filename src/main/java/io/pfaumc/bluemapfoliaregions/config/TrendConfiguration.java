@@ -7,7 +7,9 @@ public record TrendConfiguration(
         Duration resetAfter,
         double minimumTpsChange,
         double minimumMsptChange,
-        double minimumUtilizationChange
+        double minimumUtilizationChange,
+        int minimumEntityChange,
+        int minimumPlayerChange
 ) {
     public TrendConfiguration {
         if (resetAfter.isNegative() || resetAfter.isZero()) {
@@ -15,7 +17,9 @@ public record TrendConfiguration(
         }
         if (minimumTpsChange < 0.0D
                 || minimumMsptChange < 0.0D
-                || minimumUtilizationChange < 0.0D) {
+                || minimumUtilizationChange < 0.0D
+                || minimumEntityChange < 0
+                || minimumPlayerChange < 0) {
             throw new IllegalArgumentException("Trend sensitivities must not be negative");
         }
     }

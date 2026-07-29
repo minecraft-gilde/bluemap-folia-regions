@@ -1,6 +1,7 @@
 package io.pfaumc.bluemapfoliaregions.marker;
 
 import de.bluecolored.bluemap.api.math.Color;
+import io.pfaumc.bluemapfoliaregions.config.LoadContextConfiguration;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration.MarkerColors;
 import io.pfaumc.bluemapfoliaregions.performance.PerformanceThresholds;
@@ -8,6 +9,7 @@ import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
 import io.pfaumc.bluemapfoliaregions.performance.TrendDirection;
+import io.pfaumc.bluemapfoliaregions.performance.ValueTrend;
 import io.pfaumc.bluemapfoliaregions.performance.VisualizationMode;
 import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 import org.junit.jupiter.api.Test;
@@ -178,12 +180,15 @@ class RegionTextFormatterTest {
                 TrendDirection.IMPROVING,
                 TrendDirection.STABLE,
                 TrendDirection.WORSENING,
+                ValueTrend.INCREASING,
+                ValueTrend.DECREASING,
                 true,
                 true,
                 Duration.ofSeconds(65),
                 4
         );
-        String format = "{tps_trend}|{mspt_trend}|{utilization_trend}|{tps_trend_status}|"
+        String format = "{tps_trend}|{mspt_trend}|{utilization_trend}|{entities_trend}|{players_trend}|"
+                + "{tps_trend_status}|"
                 + "{tick_spike}|{warning_duration}|{trend_samples}{spike_detail}{warning_duration_detail}";
 
         String result = RegionTextFormatter.formatLabel(
@@ -194,7 +199,54 @@ class RegionTextFormatterTest {
                 TIME_FORMATTER
         );
 
-        assertEquals("↑|→|↑|Besser|Ja|1 min 5 s|4 · Tickspitze · Warnung seit 1 min 5 s", result);
+        assertEquals(
+                "↑|→|↑|↑|↓|Besser|Ja|1 min 5 s|4 · Tickspitze · Warnung seit 1 min 5 s",
+                result
+        );
+    }
+
+    @Test
+    void showsLoadContextOnlyForConfiguredAnomalies() {
+        LoadContextConfiguration context = new LoadContextConfiguration(
+                true,
+                new PerformanceThresholds(1.0D, 2.0D, 3.0D, false),
+                new PerformanceThresholds(5.0D, 10.0D, 20.0D, false)
+        );
+
+        String result = RegionTextFormatter.formatLabel(
+                "{load_context_display}|{load_context}",
+                snapshot("world"),
+                RegionTrendSnapshot.unavailable(false, false, Duration.ZERO),
+                context,
+                VISUALIZATION,
+                TIME_FORMATTER
+        );
+
+        assertEquals(
+                "block|Kontext: Entitätsdichte: Erhöht (1.50 ≥ 1.00 Entitäten/Chunk)"
+                        + " · Regionsgröße: Erhöht (8 ≥ 5 Chunks)",
+                result
+        );
+    }
+
+    @Test
+    void hidesLoadContextWhenValuesAreUnremarkable() {
+        LoadContextConfiguration context = new LoadContextConfiguration(
+                true,
+                new PerformanceThresholds(2.0D, 4.0D, 8.0D, false),
+                new PerformanceThresholds(10.0D, 20.0D, 40.0D, false)
+        );
+
+        String result = RegionTextFormatter.formatLabel(
+                "{load_context_display}|{load_context}",
+                snapshot("world"),
+                RegionTrendSnapshot.unavailable(false, false, Duration.ZERO),
+                context,
+                VISUALIZATION,
+                TIME_FORMATTER
+        );
+
+        assertEquals("none|", result);
     }
 
     @Test

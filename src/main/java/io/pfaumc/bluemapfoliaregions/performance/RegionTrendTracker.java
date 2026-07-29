@@ -33,16 +33,26 @@ public final class RegionTrendTracker {
         for (RegionSnapshot snapshot : snapshots) {
             TrackedRegion previous = this.regions.get(snapshot.regionId());
             Set<Long> sections = Set.copyOf(snapshot.sections());
-            boolean comparable = isComparable(previous, snapshot, sections);
+            boolean topologyComparable = isTopologyComparable(previous, snapshot, sections);
+            boolean performanceComparable = topologyComparable
+                    && previous.performance().available()
+                    && snapshot.performance().available();
             RegionStatus status = visualization.overallStatus(snapshot.performance());
-            Instant warningSince = warningSince(previous, snapshot.capturedAt(), status, comparable);
-            int sampleCount = comparable ? previous.sampleCount() + 1 : 1;
+            Instant warningSince = warningSince(previous, snapshot.capturedAt(), status, topologyComparable);
+            int sampleCount = topologyComparable ? previous.sampleCount() + 1 : 1;
             boolean tickSpike = snapshot.performance().available()
                     && snapshot.performance().worstOnePercentMspt()
                     >= visualization.msptThresholds().critical();
 
-            RegionTrendSnapshot trend = comparable
-                    ? compare(previous, snapshot, warningSince, tickSpike, sampleCount)
+            RegionTrendSnapshot trend = topologyComparable
+                    ? compare(
+                            previous,
+                            snapshot,
+                            warningSince,
+                            tickSpike,
+                            sampleCount,
+                            performanceComparable
+                    )
                     : RegionTrendSnapshot.unavailable(
                             tickSpike,
                             isWarning(status),
@@ -55,6 +65,8 @@ public final class RegionTrendTracker {
                     snapshot.capturedAt(),
                     status,
                     warningSince,
+                    snapshot.entityCount(),
+                    snapshot.playerCount(),
                     sampleCount
             ));
         }
@@ -62,11 +74,9 @@ public final class RegionTrendTracker {
         return Map.copyOf(trends);
     }
 
-    private boolean isComparable(TrackedRegion previous, RegionSnapshot current, Set<Long> sections) {
+    private boolean isTopologyComparable(TrackedRegion previous, RegionSnapshot current, Set<Long> sections) {
         if (previous == null
-                || !previous.sections().equals(sections)
-                || !previous.performance().available()
-                || !current.performance().available()) {
+                || !previous.sections().equals(sections)) {
             return false;
         }
         Duration gap = Duration.between(previous.capturedAt(), current.capturedAt());
@@ -78,29 +88,46 @@ public final class RegionTrendTracker {
             RegionSnapshot current,
             Instant warningSince,
             boolean tickSpike,
-            int sampleCount
+            int sampleCount,
+            boolean performanceComparable
     ) {
         RegionPerformanceSnapshot oldPerformance = previous.performance();
         RegionPerformanceSnapshot newPerformance = current.performance();
         return new RegionTrendSnapshot(
-                true,
-                classify(
-                        oldPerformance.tps(),
-                        newPerformance.tps(),
-                        this.configuration.minimumTpsChange(),
-                        true
+                performanceComparable,
+                performanceComparable
+                        ? classify(
+                                oldPerformance.tps(),
+                                newPerformance.tps(),
+                                this.configuration.minimumTpsChange(),
+                                true
+                        )
+                        : TrendDirection.UNAVAILABLE,
+                performanceComparable
+                        ? classify(
+                                oldPerformance.averageMspt(),
+                                newPerformance.averageMspt(),
+                                this.configuration.minimumMsptChange(),
+                                false
+                        )
+                        : TrendDirection.UNAVAILABLE,
+                performanceComparable
+                        ? classify(
+                                oldPerformance.utilization(),
+                                newPerformance.utilization(),
+                                this.configuration.minimumUtilizationChange(),
+                                false
+                        )
+                        : TrendDirection.UNAVAILABLE,
+                classifyValue(
+                        previous.entityCount(),
+                        current.entityCount(),
+                        this.configuration.minimumEntityChange()
                 ),
-                classify(
-                        oldPerformance.averageMspt(),
-                        newPerformance.averageMspt(),
-                        this.configuration.minimumMsptChange(),
-                        false
-                ),
-                classify(
-                        oldPerformance.utilization(),
-                        newPerformance.utilization(),
-                        this.configuration.minimumUtilizationChange(),
-                        false
+                classifyValue(
+                        previous.playerCount(),
+                        current.playerCount(),
+                        this.configuration.minimumPlayerChange()
                 ),
                 tickSpike,
                 warningSince != null,
@@ -121,6 +148,14 @@ public final class RegionTrendTracker {
         }
         boolean improving = higherIsBetter ? difference > 0.0D : difference < 0.0D;
         return improving ? TrendDirection.IMPROVING : TrendDirection.WORSENING;
+    }
+
+    static ValueTrend classifyValue(int previous, int current, int minimumChange) {
+        int difference = current - previous;
+        if (difference == 0 || Math.abs((long) difference) < minimumChange) {
+            return ValueTrend.STABLE;
+        }
+        return difference > 0 ? ValueTrend.INCREASING : ValueTrend.DECREASING;
     }
 
     private static Instant warningSince(
@@ -154,6 +189,8 @@ public final class RegionTrendTracker {
             Instant capturedAt,
             RegionStatus status,
             Instant warningSince,
+            int entityCount,
+            int playerCount,
             int sampleCount
     ) {}
 }
