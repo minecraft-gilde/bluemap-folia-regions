@@ -4,10 +4,10 @@ import de.bluecolored.bluemap.api.BlueMapAPI;
 import de.bluecolored.bluemap.api.BlueMapMap;
 import de.bluecolored.bluemap.api.BlueMapWorld;
 import de.bluecolored.bluemap.api.markers.MarkerSet;
-import de.bluecolored.bluemap.api.markers.ShapeMarker;
 import io.pfaumc.bluemapfoliaregions.command.BlueMapFoliaRegionsCommand;
 import io.pfaumc.bluemapfoliaregions.config.PluginConfiguration;
 import io.pfaumc.bluemapfoliaregions.marker.RegionMarkerFactory;
+import io.pfaumc.bluemapfoliaregions.marker.RegionMarkerFactory.MarkerBuildResult;
 import io.papermc.paper.threadedregions.ThreadedRegionizer;
 import io.papermc.paper.threadedregions.TickRegions;
 import io.papermc.paper.threadedregions.TickRegions.TickRegionData;
@@ -23,8 +23,11 @@ import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Map;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,6 +39,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     private static final long INITIAL_DELAY_TICKS = 20L;
 
     private final ConcurrentMap<String, ScheduledTask> tasks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, MapUpdateStatus> mapStatuses = new ConcurrentHashMap<>();
     private final RegionMarkerFactory markerFactory = new RegionMarkerFactory(1 << TickRegions.getRegionChunkShift());
     private volatile PluginConfiguration configuration;
     private volatile BlueMapAPI currentApi;
@@ -58,6 +62,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     public void onDisable() {
         this.shuttingDown = true;
         cancelAllTasks();
+        this.mapStatuses.clear();
         BlueMapAPI.getInstance().ifPresent(this::removeAllMarkerSets);
         unregisterCommand();
         this.currentApi = null;
@@ -91,6 +96,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
 
     private void onBlueMapDisable(BlueMapAPI api) {
         cancelAllTasks();
+        this.mapStatuses.clear();
         removeAllMarkerSets(api);
         if (this.currentApi == api) {
             this.currentApi = null;
@@ -108,6 +114,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         }
 
         cancelAllTasks();
+        this.mapStatuses.clear();
         removeAllMarkerSets(api, previousConfiguration.markerSetId());
         onBlueMapEnable(api);
         return true;
@@ -141,14 +148,33 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     }
 
     private void updateRegionMarkersSafely(BlueMapMap map) {
+        long startedAt = System.nanoTime();
+        Instant updateTime = Instant.now();
+        String mapKey = taskKey(map);
         try {
-            updateRegionMarkers(map);
+            MarkerBuildResult result = updateRegionMarkers(map, updateTime);
+            this.mapStatuses.put(mapKey, new MapUpdateStatus(
+                    mapKey,
+                    result.snapshots().size(),
+                    result.markers().size(),
+                    updateTime,
+                    elapsedMillis(startedAt),
+                    null
+            ));
         } catch (RuntimeException exception) {
-            getLogger().log(Level.WARNING, "Failed to update Folia region markers for BlueMap map: " + taskKey(map), exception);
+            this.mapStatuses.compute(mapKey, (ignored, previous) -> new MapUpdateStatus(
+                    mapKey,
+                    previous == null ? 0 : previous.regionCount(),
+                    previous == null ? 0 : previous.markerCount(),
+                    updateTime,
+                    elapsedMillis(startedAt),
+                    exception.getClass().getSimpleName() + ": " + String.valueOf(exception.getMessage())
+            ));
+            getLogger().log(Level.WARNING, "Failed to update Folia region markers for BlueMap map: " + mapKey, exception);
         }
     }
 
-    private void updateRegionMarkers(BlueMapMap map) {
+    private MarkerBuildResult updateRegionMarkers(BlueMapMap map, Instant capturedAt) {
         PluginConfiguration activeConfiguration = this.configuration;
         MarkerSet markerSet = MarkerSet.builder()
                 .label(activeConfiguration.markerSetLabel())
@@ -162,16 +188,55 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         if (worldOptional.isEmpty()) {
             getLogger().warning("World not found for BlueMap world id: " + id);
             map.getMarkerSets().remove(activeConfiguration.markerSetId());
-            return;
+            throw new IllegalStateException("Bukkit world not found for BlueMap world id " + id);
         }
 
         World world = worldOptional.get();
         ThreadedRegionizer<TickRegionData, TickRegionSectionData> regioniser =
                 ((CraftWorld) world).getHandle().regioniser;
 
-        Map<String, ShapeMarker> markers = this.markerFactory.createMarkers(regioniser, activeConfiguration);
-        markerSet.getMarkers().putAll(markers);
+        MarkerBuildResult result = this.markerFactory.createMarkers(
+                regioniser,
+                activeConfiguration,
+                world.getName(),
+                capturedAt
+        );
+        markerSet.getMarkers().putAll(result.markers());
         map.getMarkerSets().put(activeConfiguration.markerSetId(), markerSet);
+        return result;
+    }
+
+    public RuntimeStatus getRuntimeStatus() {
+        List<MapUpdateStatus> statuses = new ArrayList<>(this.mapStatuses.values());
+        statuses.sort(Comparator.comparing(MapUpdateStatus::mapKey));
+        return new RuntimeStatus(
+                this.currentApi != null,
+                this.tasks.size(),
+                this.configuration.updateIntervalTicks(),
+                List.copyOf(statuses)
+        );
+    }
+
+    public int refreshRegionMarkers() {
+        BlueMapAPI api = this.currentApi;
+        if (api == null || this.shuttingDown || !isEnabled()) {
+            return 0;
+        }
+
+        int scheduled = 0;
+        for (BlueMapMap map : api.getMaps()) {
+            try {
+                Bukkit.getGlobalRegionScheduler().run(this, (task) -> updateRegionMarkersSafely(map));
+                scheduled++;
+            } catch (IllegalPluginAccessException exception) {
+                getLogger().log(Level.WARNING, "Could not schedule manual refresh for " + taskKey(map), exception);
+            }
+        }
+        return scheduled;
+    }
+
+    private static double elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000.0D;
     }
 
     private String taskKey(BlueMapMap map) {
@@ -241,6 +306,8 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     private void registerPermissions() {
         addPermission("bluemapfoliaregions.command");
         addPermission("bluemapfoliaregions.reload");
+        addPermission("bluemapfoliaregions.refresh");
+        addPermission("bluemapfoliaregions.status");
     }
 
     private void addPermission(String name) {
@@ -259,6 +326,26 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         if (this.command != null) {
             this.command.unregister(getServer().getCommandMap());
             this.command = null;
+        }
+    }
+
+    public record RuntimeStatus(
+            boolean blueMapEnabled,
+            int scheduledMapCount,
+            long updateIntervalTicks,
+            List<MapUpdateStatus> maps
+    ) {}
+
+    public record MapUpdateStatus(
+            String mapKey,
+            int regionCount,
+            int markerCount,
+            Instant lastUpdate,
+            double updateDurationMillis,
+            String lastError
+    ) {
+        public boolean successful() {
+            return this.lastError == null;
         }
     }
 }
