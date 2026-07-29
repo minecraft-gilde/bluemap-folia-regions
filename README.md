@@ -1,49 +1,76 @@
 # BlueMap Folia Regions
 
-Zeigt Folia Tick-Regionen als Marker-Overlay in **BlueMap** an.
+Zeigt Folia-Tick-Regionen als übersichtliches Marker-Overlay in **BlueMap** an.
 
-<img width="809" height="502" alt="Screenshot" src="https://github.com/user-attachments/assets/3153a9f2-dbf4-4259-bbf9-d4fbbef9c754" />
+> Der Branch `version-2` enthält die Entwicklung von Version 2.
+
+<img width="809" height="502" alt="Folia-Regionen in BlueMap" src="https://github.com/user-attachments/assets/3153a9f2-dbf4-4259-bbf9-d4fbbef9c754" />
 
 ## Features
-- Marker-Set "Folia Tick-Regionen" pro BlueMap-Map
-- Zeigt Region-Umrisse + Infos (Sektionen, Chunks, Entitaeten, Spieler)
-- Standardmaessig ausgeblendet (togglebar)
+
+- Exakte Regionsumrisse einschließlich konkaver Flächen, Löcher und getrennter Teilflächen
+- Regionsdaten wie Zentrum, Sektionen, Chunks, Fläche, Entitäten und Spieler
+- TPS, MSPT, Tickspitzen und Auslastung für verschiedene Zeitfenster
+- Konfigurierbare Heatmap nach Auslastung, MSPT oder TPS
+- Kurzzeit-Trends, Warnzustandsdauer und kompakte Ursachenanalyse
+- Belastungskontext für hohe Entitätsdichte und ungewöhnlich große Regionen
+- Kompakte, für Desktop und Mobilgeräte geeignete Detailansicht
+- Laufzeitstatus, sofortige Aktualisierung und Reload per Befehl
 
 ## Voraussetzungen
-- **Folia** (Version passend zum Build des Plugins)
-- **BlueMap** (BlueMapAPI)
-- **JDK 25** fuer den Build
-- **Gradle 9.x** ueber den mitgelieferten Wrapper
+
+- **Folia** in einer zum Plugin-Build passenden Version
+- **BlueMap** mit verfügbarer BlueMapAPI
+
+Für einen lokalen Build werden zusätzlich **JDK 25** und der mitgelieferte Gradle-Wrapper benötigt.
 
 ## Installation
-1. BlueMap installieren und starten (damit die Maps existieren)
-2. Dieses Plugin in den `plugins/` Ordner legen
-3. Server neu starten
-4. In BlueMap: Marker -> "Folia Tick-Regionen" aktivieren
+
+1. BlueMap installieren und einmal starten, damit die Maps angelegt werden.
+2. Die Plugin-JAR in den Ordner `plugins/` legen.
+3. Den Server neu starten.
+4. In BlueMap unter „Marker“ das Overlay „Folia Tick-Regionen“ aktivieren.
 
 ## Konfiguration
-Beim ersten Start wird `plugins/BlueMap-Folia-Regions/config.yml` erstellt.
+
+Beim ersten Start wird `plugins/BlueMap-Folia-Regions/config.yml` erstellt. Die wichtigsten Einstellungen:
 
 ```yaml
 update-interval-seconds: 5
 
-marker-set:
-  id: folia-regions
-  label: Folia Tick-Regionen
-  default-hidden: true
-  toggleable: true
+visualization:
+  mode: utilization       # static, utilization, mspt oder tps
+  report-window: 15s      # 5s, 15s, 1m, 5m oder 15m
 
-markers:
-  label-format: "Region[{center_x},{center_z}]"
-  height: 80
-  line-color: "#9b46ffff"
-  fill-color: "#d2aaff59"
-  line-width: 2
+trends:
+  enabled: true
+
+load-context:
+  enabled: true
+
+marker-set:
+  default-hidden: true
 ```
 
-Nach Änderungen kann die Config mit `/bmfr reload` neu geladen werden. Für `markers.label-format` stehen `{world}`, `{center_x}`, `{center_z}`, `{sections}`, `{chunks}`, `{entities}` und `{players}` zur Verfügung.
+Die vollständige Beschreibung aller Einstellungen, Schwellenwerte, Farben und Formatplatzhalter befindet sich in der [Konfigurationsreferenz](docs/CONFIGURATION.md).
+
+## Befehle
+
+| Befehl | Beschreibung |
+| --- | --- |
+| `/bmfr reload` | Konfiguration neu laden |
+| `/bmfr refresh` | Marker aller BlueMap-Maps sofort neu berechnen |
+| `/bmfr status` | Verbindungs-, Regions-, Marker- und Laufzeitstatus anzeigen |
+
+Die Berechtigungen heißen entsprechend `bluemapfoliaregions.reload`, `bluemapfoliaregions.refresh` und `bluemapfoliaregions.status`. Sie sind standardmäßig Operatoren vorbehalten.
+
+## Dokumentation
+
+- [Konfiguration und Formatplatzhalter](docs/CONFIGURATION.md)
+- [Release mit Git-Tags erstellen](docs/RELEASE.md)
 
 ## Build
+
 ```bash
 ./gradlew build
 ```

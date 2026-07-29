@@ -1,16 +1,25 @@
 package io.pfaumc.bluemapfoliaregions.marker;
 
+import ca.spottedleaf.moonrise.common.time.TickData.TickReportData;
 import com.flowpowered.math.vector.Vector2d;
 import de.bluecolored.bluemap.api.markers.ShapeMarker;
 import de.bluecolored.bluemap.api.math.Shape;
 import io.pfaumc.bluemapfoliaregions.config.PluginConfiguration;
+import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration.MarkerColors;
+import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendTracker;
+import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
+import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 import io.papermc.paper.threadedregions.ThreadedRegionizer;
 import io.papermc.paper.threadedregions.ThreadedRegionizer.ThreadedRegion;
 import io.papermc.paper.threadedregions.TickRegions;
 import io.papermc.paper.threadedregions.TickRegions.TickRegionData;
 import io.papermc.paper.threadedregions.TickRegions.TickRegionSectionData;
+import io.papermc.paper.threadedregions.TickRegionScheduler.RegionScheduleHandle;
 import net.minecraft.world.level.ChunkPos;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -28,16 +37,45 @@ public class RegionMarkerFactory {
         this.sectionBlockSize = sectionChunkSize * 16;
     }
 
-    public Map<String, ShapeMarker> createMarkers(
+    public MarkerBuildResult createMarkers(
             ThreadedRegionizer<TickRegionData, TickRegionSectionData> regioniser,
-            PluginConfiguration configuration
+            PluginConfiguration configuration,
+            String worldName,
+            Instant capturedAt
+    ) {
+        return createMarkers(
+                regioniser,
+                configuration,
+                worldName,
+                capturedAt,
+                new RegionTrendTracker(configuration.trends())
+        );
+    }
+
+    public MarkerBuildResult createMarkers(
+            ThreadedRegionizer<TickRegionData, TickRegionSectionData> regioniser,
+            PluginConfiguration configuration,
+            String worldName,
+            Instant capturedAt,
+            RegionTrendTracker trendTracker
     ) {
         List<RegionSnapshot> snapshots = Collections.synchronizedList(new ArrayList<>());
-        regioniser.computeForAllRegions((region) -> snapshots.add(toSnapshot(region)));
+        long reportTime = System.nanoTime();
+        regioniser.computeForAllRegions((region) -> {
+            RegionSnapshot snapshot = toSnapshot(region, worldName, capturedAt, configuration, reportTime);
+            if (snapshot != null) {
+                snapshots.add(snapshot);
+            }
+        });
 
+        Map<Long, RegionTrendSnapshot> trends = trendTracker.update(snapshots, configuration.visualization());
         Map<String, ShapeMarker> markers = new HashMap<>(snapshots.size());
+        MarkerColors staticColors = new MarkerColors(
+                configuration.markerLineColor(),
+                configuration.markerFillColor()
+        );
         for (RegionSnapshot snapshot : snapshots) {
-            if (snapshot.centerChunk() == null || snapshot.sections().isEmpty()) {
+            if (snapshot.sections().isEmpty()) {
                 continue;
             }
 
@@ -46,15 +84,28 @@ public class RegionMarkerFactory {
                 continue;
             }
 
-            ChunkPos centerChunk = snapshot.centerChunk();
-            String baseMarkerId = "region-" + centerChunk.x() + "-" + centerChunk.z();
-            String label = formatLabel(configuration.markerLabelFormat(), snapshot);
-
-            String detail =
-                    "Sektionen: " + snapshot.sections().size() + "<br>" +
-                    "Chunks: " + snapshot.chunkCount() + "<br>" +
-                    "Entit&auml;ten: " + snapshot.entityCount() + "<br>" +
-                    "Spieler: " + snapshot.playerCount();
+            RegionTrendSnapshot trend = trends.getOrDefault(
+                    snapshot.regionId(),
+                    RegionTrendSnapshot.unavailable(false, false, java.time.Duration.ZERO)
+            );
+            String baseMarkerId = "region-" + snapshot.regionId();
+            String label = RegionTextFormatter.formatLabel(
+                    configuration.markerLabelFormat(),
+                    snapshot,
+                    trend,
+                    configuration.loadContext(),
+                    configuration.visualization(),
+                    configuration.markerTimestampFormatter()
+            );
+            String detail = RegionTextFormatter.formatDetail(
+                    configuration.markerDetailFormat(),
+                    snapshot,
+                    trend,
+                    configuration.loadContext(),
+                    configuration.visualization(),
+                    configuration.markerTimestampFormatter()
+            );
+            MarkerColors markerColors = configuration.visualization().colorsFor(snapshot.performance(), staticColors);
 
             for (int i = 0; i < polygons.size(); i++) {
                 RegionPolygon polygon = polygons.get(i);
@@ -64,8 +115,8 @@ public class RegionMarkerFactory {
                         .shape(new Shape(polygon.outline()), configuration.markerHeight())
                         .holes(polygon.holes().stream().map(Shape::new).toArray(Shape[]::new))
                         .label(label)
-                        .lineColor(configuration.markerLineColor())
-                        .fillColor(configuration.markerFillColor())
+                        .lineColor(markerColors.line())
+                        .fillColor(markerColors.fill())
                         .lineWidth(configuration.markerLineWidth())
                         .depthTestEnabled(false)
                         .build();
@@ -74,34 +125,55 @@ public class RegionMarkerFactory {
                 markers.put(markerId, marker);
             }
         }
-        return markers;
+        return new MarkerBuildResult(Map.copyOf(markers), List.copyOf(snapshots));
     }
 
-    private static RegionSnapshot toSnapshot(ThreadedRegion<TickRegionData, TickRegionSectionData> region) {
+    private RegionSnapshot toSnapshot(
+            ThreadedRegion<TickRegionData, TickRegionSectionData> region,
+            String worldName,
+            Instant capturedAt,
+            PluginConfiguration configuration,
+            long reportTime
+    ) {
         ChunkPos centerChunk = region.getCenterChunk();
+        if (centerChunk == null) {
+            return null;
+        }
         List<Long> sections = List.copyOf(region.getOwnedSections());
         TickRegions.RegionStats stats = region.getData().getRegionStats();
-        String worldName = region.getData().world.getTypeKey().identifier().getPath();
+        ReportWindow reportWindow = configuration.visualization().reportWindow();
+        TickReportData tickReport = getTickReport(
+                region.getData().getRegionSchedulingHandle(),
+                reportWindow,
+                reportTime
+        );
         return new RegionSnapshot(
+                region.getData().id,
                 worldName,
-                centerChunk,
+                centerChunk.x(),
+                centerChunk.z(),
                 sections,
+                this.sectionBlockSize,
                 stats.getChunkCount(),
                 stats.getEntityCount(),
-                stats.getPlayerCount()
+                stats.getPlayerCount(),
+                RegionPerformanceSnapshot.from(tickReport, reportWindow),
+                capturedAt
         );
     }
 
-    private static String formatLabel(String format, RegionSnapshot snapshot) {
-        ChunkPos centerChunk = snapshot.centerChunk();
-        return format
-                .replace("{world}", snapshot.worldName())
-                .replace("{center_x}", Integer.toString(centerChunk.x()))
-                .replace("{center_z}", Integer.toString(centerChunk.z()))
-                .replace("{sections}", Integer.toString(snapshot.sections().size()))
-                .replace("{chunks}", Integer.toString(snapshot.chunkCount()))
-                .replace("{entities}", Integer.toString(snapshot.entityCount()))
-                .replace("{players}", Integer.toString(snapshot.playerCount()));
+    private static TickReportData getTickReport(
+            RegionScheduleHandle handle,
+            ReportWindow reportWindow,
+            long reportTime
+    ) {
+        return switch (reportWindow) {
+            case FIVE_SECONDS -> handle.getTickReport5s(reportTime);
+            case FIFTEEN_SECONDS -> handle.getTickReport15s(reportTime);
+            case ONE_MINUTE -> handle.getTickReport1m(reportTime);
+            case FIVE_MINUTES -> handle.getTickReport5m(reportTime);
+            case FIFTEEN_MINUTES -> handle.getTickReport15m(reportTime);
+        };
     }
 
     static List<RegionPolygon> createRegionPolygons(Collection<Long> sections, int sectionBlockSize) {
@@ -382,15 +454,7 @@ public class RegionMarkerFactory {
         return (int) (chunkKey >> 32);
     }
 
-    private record RegionSnapshot(
-            String worldName,
-            ChunkPos centerChunk,
-            List<Long> sections,
-            int chunkCount,
-            int entityCount,
-            int playerCount
-    ) {}
-
+    public record MarkerBuildResult(Map<String, ShapeMarker> markers, List<RegionSnapshot> snapshots) {}
     record RegionPolygon(List<Vector2d> outline, List<List<Vector2d>> holes) {}
 
     private record SectionCoord(int x, int z) {}
