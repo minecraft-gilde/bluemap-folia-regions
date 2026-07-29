@@ -48,7 +48,7 @@ public record PluginConfiguration(
                 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
                   <div><strong>{sections_formatted}</strong><div style="opacity:.6;font-size:11px">Sektionen</div></div>
                   <div><strong>{chunks_formatted}</strong><div style="opacity:.6;font-size:11px">Chunks</div></div>
-                  <div><strong>{area_blocks_formatted}</strong><div style="opacity:.6;font-size:11px">Bl&ouml;cke&sup2;</div></div>
+                  <div><strong>{area_blocks_formatted}</strong><div style="opacity:.6;font-size:11px">Fl&auml;che</div></div>
                 </div>
               </div>
               <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
@@ -72,6 +72,10 @@ public record PluginConfiguration(
               </div>
               <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
             </div>""";
+    private static final String PREVIOUS_DEFAULT_DETAIL_FORMAT = DEFAULT_DETAIL_FORMAT.replace(
+            ">Fl&auml;che</div>",
+            ">Bl&ouml;cke&sup2;</div>"
+    );
     private static final String LEGACY_DETAIL_FORMAT = """
             <b>Folia-Region {region_id}</b><br>
             Welt: {world}<br>
@@ -306,7 +310,8 @@ public record PluginConfiguration(
 
     static String detailFormatOrDefault(String value) {
         String configured = stringOrDefault(value, DEFAULT_DETAIL_FORMAT);
-        if (configured.strip().equals(LEGACY_DETAIL_FORMAT.strip())) {
+        if (configured.strip().equals(LEGACY_DETAIL_FORMAT.strip())
+                || configured.strip().equals(PREVIOUS_DEFAULT_DETAIL_FORMAT.strip())) {
             return DEFAULT_DETAIL_FORMAT;
         }
         String responsive = configured

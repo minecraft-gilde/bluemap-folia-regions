@@ -17,6 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginConfigurationTest {
     @Test
+    void upgradesPreviousAreaLabelInDefaultLayout() {
+        String currentDefault = PluginConfiguration.detailFormatOrDefault(null);
+        String previousDefault = currentDefault.replace(
+                ">Fl&auml;che</div>",
+                ">Bl&ouml;cke&sup2;</div>"
+        );
+
+        String migrated = PluginConfiguration.detailFormatOrDefault(previousDefault);
+
+        assertTrue(migrated.contains(">Fl&auml;che</div>"));
+        assertNotEquals(previousDefault, migrated);
+    }
+
+    @Test
     void upgradesPreviousDefaultDetailLayoutInMemory() {
         String legacy = """
                 <b>Folia-Region {region_id}</b><br>
