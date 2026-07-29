@@ -1,5 +1,15 @@
 update-interval-seconds: 5
 
+trends:
+  enabled: true
+  # Discard comparisons after this gap or when a region's sections change
+  reset-after-seconds: 30
+  sensitivity:
+    # Smaller changes are displayed as stable
+    tps: 0.10
+    mspt: 1.0
+    utilization-percentage-points: 2.0
+
 visualization:
   # Available modes: static, utilization, mspt, tps
   mode: utilization
@@ -54,7 +64,12 @@ markers:
   # {report_window}, {collected_ticks}, {tps}, {mspt}, {mspt_worst_5},
   # {collected_ticks_formatted}, {mspt_worst_1}, {utilization},
   # {status}, {status_color}, {visualization_status}, {visualization_color},
-  # {visualization_mode}, {updated_at}
+  # {visualization_mode}, {trend_available}, {trend_samples},
+  # {tps_trend}, {tps_trend_status}, {tps_trend_color},
+  # {mspt_trend}, {mspt_trend_status}, {mspt_trend_color},
+  # {utilization_trend}, {utilization_trend_status}, {utilization_trend_color},
+  # {tick_spike}, {spike_detail}, {warning_duration}, {warning_duration_detail},
+  # {updated_at}
   label-format: "Region[{center_x},{center_z}]"
   detail-format: |-
     <div style="width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25">
@@ -86,6 +101,7 @@ markers:
           <div><strong>{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
         </div>
         <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
+        <div style="margin-top:5px;opacity:.65;font-size:11px;line-height:1.35">Trend: TPS <span style="color:{tps_trend_color};font-weight:700">{tps_trend}</span> &middot; Tickzeit <span style="color:{mspt_trend_color};font-weight:700">{mspt_trend}</span> &middot; Auslastung <span style="color:{utilization_trend_color};font-weight:700">{utilization_trend}</span>{spike_detail}{warning_duration_detail}</div>
       </div>
       <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
     </div>

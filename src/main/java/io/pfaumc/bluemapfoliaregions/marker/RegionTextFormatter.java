@@ -4,9 +4,12 @@ import de.bluecolored.bluemap.api.math.Color;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration;
 import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.RegionStatus;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.TrendDirection;
 import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 
 import java.text.NumberFormat;
+import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
@@ -25,7 +28,23 @@ final class RegionTextFormatter {
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter
     ) {
-        return format(format, snapshot, visualization, timestampFormatter, Function.identity());
+        return formatLabel(
+                format,
+                snapshot,
+                noTrend(),
+                visualization,
+                timestampFormatter
+        );
+    }
+
+    static String formatLabel(
+            String format,
+            RegionSnapshot snapshot,
+            RegionTrendSnapshot trend,
+            VisualizationConfiguration visualization,
+            DateTimeFormatter timestampFormatter
+    ) {
+        return format(format, snapshot, trend, visualization, timestampFormatter, Function.identity());
     }
 
     static String formatDetail(
@@ -34,12 +53,36 @@ final class RegionTextFormatter {
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter
     ) {
-        return format(format, snapshot, visualization, timestampFormatter, RegionTextFormatter::escapeHtml);
+        return formatDetail(
+                format,
+                snapshot,
+                noTrend(),
+                visualization,
+                timestampFormatter
+        );
+    }
+
+    static String formatDetail(
+            String format,
+            RegionSnapshot snapshot,
+            RegionTrendSnapshot trend,
+            VisualizationConfiguration visualization,
+            DateTimeFormatter timestampFormatter
+    ) {
+        return format(
+                format,
+                snapshot,
+                trend,
+                visualization,
+                timestampFormatter,
+                RegionTextFormatter::escapeHtml
+        );
     }
 
     private static String format(
             String format,
             RegionSnapshot snapshot,
+            RegionTrendSnapshot trend,
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter,
             Function<String, String> valueSanitizer
@@ -94,6 +137,29 @@ final class RegionTextFormatter {
                         cssColor(visualization.colorsForStatus(visualizationStatus).line())
                 ),
                 Map.entry("visualization_mode", visualization.mode().configValue()),
+                Map.entry("trend_available", Boolean.toString(trend.comparisonAvailable())),
+                Map.entry("trend_samples", Integer.toString(trend.sampleCount())),
+                Map.entry("tps_trend", trendSymbol(trend.tps(), true)),
+                Map.entry("tps_trend_status", trend.tps().displayName()),
+                Map.entry("tps_trend_color", trendColor(trend.tps())),
+                Map.entry("mspt_trend", trendSymbol(trend.mspt(), false)),
+                Map.entry("mspt_trend_status", trend.mspt().displayName()),
+                Map.entry("mspt_trend_color", trendColor(trend.mspt())),
+                Map.entry("utilization_trend", trendSymbol(trend.utilization(), false)),
+                Map.entry("utilization_trend_status", trend.utilization().displayName()),
+                Map.entry("utilization_trend_color", trendColor(trend.utilization())),
+                Map.entry("tick_spike", trend.tickSpike() ? "Ja" : "Nein"),
+                Map.entry("spike_detail", trend.tickSpike() ? " · Tickspitze" : ""),
+                Map.entry(
+                        "warning_duration",
+                        trend.warningActive() ? formatDuration(trend.warningDuration()) : unavailable
+                ),
+                Map.entry(
+                        "warning_duration_detail",
+                        trend.warningActive()
+                                ? " · Warnung seit " + formatDuration(trend.warningDuration())
+                                : ""
+                ),
                 Map.entry("updated_at", timestampFormatter.format(snapshot.capturedAt()))
         );
 
@@ -113,6 +179,50 @@ final class RegionTextFormatter {
 
     private static String formatDensity(double density) {
         return formatMetric(density);
+    }
+
+    static String formatDuration(Duration duration) {
+        long seconds = Math.max(0L, duration.toSeconds());
+        if (seconds == 0L) {
+            return "< 1 s";
+        }
+        if (seconds < 60L) {
+            return seconds + " s";
+        }
+        long minutes = seconds / 60L;
+        long remainingSeconds = seconds % 60L;
+        if (minutes < 60L) {
+            return remainingSeconds == 0L
+                    ? minutes + " min"
+                    : minutes + " min " + remainingSeconds + " s";
+        }
+        long hours = minutes / 60L;
+        long remainingMinutes = minutes % 60L;
+        return remainingMinutes == 0L
+                ? hours + " h"
+                : hours + " h " + remainingMinutes + " min";
+    }
+
+    private static String trendSymbol(TrendDirection direction, boolean higherIsBetter) {
+        return switch (direction) {
+            case IMPROVING -> higherIsBetter ? "↑" : "↓";
+            case STABLE -> "→";
+            case WORSENING -> higherIsBetter ? "↓" : "↑";
+            case UNAVAILABLE -> "–";
+        };
+    }
+
+    private static String trendColor(TrendDirection direction) {
+        return switch (direction) {
+            case IMPROVING -> "#51cf66";
+            case STABLE -> "rgba(255,255,255,.55)";
+            case WORSENING -> "#ff6b6b";
+            case UNAVAILABLE -> "rgba(255,255,255,.35)";
+        };
+    }
+
+    private static RegionTrendSnapshot noTrend() {
+        return RegionTrendSnapshot.unavailable(false, false, Duration.ZERO);
     }
 
     private static String formatMetric(double value) {

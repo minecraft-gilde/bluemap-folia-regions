@@ -9,6 +9,7 @@ import io.pfaumc.bluemapfoliaregions.config.PluginConfiguration;
 import io.pfaumc.bluemapfoliaregions.marker.RegionMarkerFactory;
 import io.pfaumc.bluemapfoliaregions.marker.RegionMarkerFactory.MarkerBuildResult;
 import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendTracker;
 import io.pfaumc.bluemapfoliaregions.performance.VisualizationMode;
 import io.papermc.paper.threadedregions.ThreadedRegionizer;
 import io.papermc.paper.threadedregions.TickRegions;
@@ -42,6 +43,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
 
     private final ConcurrentMap<String, ScheduledTask> tasks = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MapUpdateStatus> mapStatuses = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, RegionTrendTracker> trendTrackers = new ConcurrentHashMap<>();
     private final RegionMarkerFactory markerFactory = new RegionMarkerFactory(1 << TickRegions.getRegionChunkShift());
     private volatile PluginConfiguration configuration;
     private volatile BlueMapAPI currentApi;
@@ -65,6 +67,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
         this.shuttingDown = true;
         cancelAllTasks();
         this.mapStatuses.clear();
+        this.trendTrackers.clear();
         BlueMapAPI.getInstance().ifPresent(this::removeAllMarkerSets);
         unregisterCommand();
         this.currentApi = null;
@@ -77,6 +80,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
 
         this.currentApi = api;
         cancelAllTasks();
+        this.trendTrackers.clear();
         for (BlueMapMap map : api.getMaps()) {
             ScheduledTask task = Bukkit.getGlobalRegionScheduler().runAtFixedRate(
                     this,
@@ -99,6 +103,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
     private void onBlueMapDisable(BlueMapAPI api) {
         cancelAllTasks();
         this.mapStatuses.clear();
+        this.trendTrackers.clear();
         removeAllMarkerSets(api);
         if (this.currentApi == api) {
             this.currentApi = null;
@@ -117,6 +122,7 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
 
         cancelAllTasks();
         this.mapStatuses.clear();
+        this.trendTrackers.clear();
         removeAllMarkerSets(api, previousConfiguration.markerSetId());
         onBlueMapEnable(api);
         return true;
@@ -201,7 +207,11 @@ public class BlueMapFoliaRegionsPlugin extends JavaPlugin {
                 regioniser,
                 activeConfiguration,
                 world.getName(),
-                capturedAt
+                capturedAt,
+                this.trendTrackers.computeIfAbsent(
+                        taskKey(map),
+                        (ignored) -> new RegionTrendTracker(activeConfiguration.trends())
+                )
         );
         markerSet.getMarkers().putAll(result.markers());
         map.getMarkerSets().put(activeConfiguration.markerSetId(), markerSet);

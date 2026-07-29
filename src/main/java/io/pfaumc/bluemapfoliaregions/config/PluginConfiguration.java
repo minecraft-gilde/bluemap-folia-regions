@@ -8,6 +8,7 @@ import io.pfaumc.bluemapfoliaregions.performance.VisualizationMode;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.logging.Logger;
@@ -25,6 +26,7 @@ public record PluginConfiguration(
         Color markerFillColor,
         int markerLineWidth,
         VisualizationConfiguration visualization,
+        TrendConfiguration trends,
         long updateIntervalTicks
 ) {
     private static final String DEFAULT_MARKER_SET_ID = "folia-regions";
@@ -60,6 +62,7 @@ public record PluginConfiguration(
                   <div><strong>{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
                 </div>
                 <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
+                <div style="margin-top:5px;opacity:.65;font-size:11px;line-height:1.35">Trend: TPS <span style="color:{tps_trend_color};font-weight:700">{tps_trend}</span> &middot; Tickzeit <span style="color:{mspt_trend_color};font-weight:700">{mspt_trend}</span> &middot; Auslastung <span style="color:{utilization_trend_color};font-weight:700">{utilization_trend}</span>{spike_detail}{warning_duration_detail}</div>
               </div>
               <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
             </div>""";
@@ -92,6 +95,7 @@ public record PluginConfiguration(
     public static PluginConfiguration from(JavaPlugin plugin) {
         FileConfiguration config = plugin.getConfig();
         Logger logger = plugin.getLogger();
+        TrendConfiguration trends = parseTrends(config);
 
         return new PluginConfiguration(
                 stringOrDefault(config.getString("marker-set.id"), DEFAULT_MARKER_SET_ID),
@@ -99,7 +103,10 @@ public record PluginConfiguration(
                 config.getBoolean("marker-set.default-hidden", true),
                 config.getBoolean("marker-set.toggleable", true),
                 stringOrDefault(config.getString("markers.label-format"), DEFAULT_LABEL_FORMAT),
-                detailFormatOrDefault(config.getString("markers.detail-format")),
+                trendDetailFormat(
+                        detailFormatOrDefault(config.getString("markers.detail-format")),
+                        trends.enabled()
+                ),
                 parseTimestampFormatter(
                         config.getString("markers.timestamp-format", DEFAULT_TIMESTAMP_FORMAT),
                         logger
@@ -109,7 +116,21 @@ public record PluginConfiguration(
                 parseColor(config.getString("markers.fill-color", "#d2aaff59"), DEFAULT_FILL_COLOR, logger),
                 Math.max(1, config.getInt("markers.line-width", 2)),
                 parseVisualization(config, logger),
+                trends,
                 Math.max(20L, config.getLong("update-interval-seconds", 5L) * 20L)
+        );
+    }
+
+    static TrendConfiguration parseTrends(FileConfiguration config) {
+        return new TrendConfiguration(
+                config.getBoolean("trends.enabled", true),
+                Duration.ofSeconds(Math.max(1L, config.getLong("trends.reset-after-seconds", 30L))),
+                Math.max(0.0D, config.getDouble("trends.sensitivity.tps", 0.10D)),
+                Math.max(0.0D, config.getDouble("trends.sensitivity.mspt", 1.0D)),
+                Math.max(
+                        0.0D,
+                        config.getDouble("trends.sensitivity.utilization-percentage-points", 2.0D) / 100.0D
+                )
         );
     }
 
@@ -250,7 +271,26 @@ public record PluginConfiguration(
                 && responsive.contains("margin-top:8px;text-align:right;opacity:.45;font-size:9px")) {
             return DEFAULT_DETAIL_FORMAT;
         }
+        if (responsive.contains(
+                "width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25"
+        ) && responsive.contains(
+                "Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms"
+        ) && !responsive.contains("{tps_trend}")) {
+            return DEFAULT_DETAIL_FORMAT;
+        }
         return responsive;
+    }
+
+    static String trendDetailFormat(String detailFormat, boolean trendsEnabled) {
+        if (trendsEnabled) {
+            return detailFormat;
+        }
+        return detailFormat.lines()
+                .filter((line) -> !line.contains(">Trend: TPS ")
+                        || !line.contains("{tps_trend}")
+                        || !line.contains("{mspt_trend}")
+                        || !line.contains("{utilization_trend}"))
+                .collect(java.util.stream.Collectors.joining("\n"));
     }
 
     private static Color parseColor(String value, Color fallback, Logger logger) {

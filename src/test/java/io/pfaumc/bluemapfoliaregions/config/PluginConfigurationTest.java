@@ -1,6 +1,9 @@
 package io.pfaumc.bluemapfoliaregions.config;
 
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -66,5 +69,35 @@ class PluginConfigurationTest {
         assertTrue(migrated.contains("font-size:14px;line-height:1.25"));
         assertTrue(migrated.contains("{entities_per_chunk} / Chunk"));
         assertTrue(migrated.contains("margin-top:10px;text-align:right"));
+    }
+
+    @Test
+    void hidesDefaultTrendRowWhenTrendsAreDisabled() {
+        String detail = """
+                <div>Leistung</div>
+                <div>Trend: TPS {tps_trend} · Tickzeit {mspt_trend} · Auslastung {utilization_trend}</div>
+                <div>Stand</div>""";
+
+        String result = PluginConfiguration.trendDetailFormat(detail, false);
+
+        assertEquals("<div>Leistung</div>\n<div>Stand</div>", result);
+    }
+
+    @Test
+    void parsesTrendSensitivityAndPercentagePoints() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("trends.enabled", true);
+        config.set("trends.reset-after-seconds", 45);
+        config.set("trends.sensitivity.tps", 0.2D);
+        config.set("trends.sensitivity.mspt", 2.5D);
+        config.set("trends.sensitivity.utilization-percentage-points", 3.0D);
+
+        TrendConfiguration trends = PluginConfiguration.parseTrends(config);
+
+        assertTrue(trends.enabled());
+        assertEquals(Duration.ofSeconds(45), trends.resetAfter());
+        assertEquals(0.2D, trends.minimumTpsChange());
+        assertEquals(2.5D, trends.minimumMsptChange());
+        assertEquals(0.03D, trends.minimumUtilizationChange());
     }
 }

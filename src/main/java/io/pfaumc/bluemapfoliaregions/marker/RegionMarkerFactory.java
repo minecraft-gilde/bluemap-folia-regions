@@ -7,6 +7,8 @@ import de.bluecolored.bluemap.api.math.Shape;
 import io.pfaumc.bluemapfoliaregions.config.PluginConfiguration;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration.MarkerColors;
 import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendTracker;
 import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
 import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 import io.papermc.paper.threadedregions.ThreadedRegionizer;
@@ -41,6 +43,22 @@ public class RegionMarkerFactory {
             String worldName,
             Instant capturedAt
     ) {
+        return createMarkers(
+                regioniser,
+                configuration,
+                worldName,
+                capturedAt,
+                new RegionTrendTracker(configuration.trends())
+        );
+    }
+
+    public MarkerBuildResult createMarkers(
+            ThreadedRegionizer<TickRegionData, TickRegionSectionData> regioniser,
+            PluginConfiguration configuration,
+            String worldName,
+            Instant capturedAt,
+            RegionTrendTracker trendTracker
+    ) {
         List<RegionSnapshot> snapshots = Collections.synchronizedList(new ArrayList<>());
         long reportTime = System.nanoTime();
         regioniser.computeForAllRegions((region) -> {
@@ -50,6 +68,7 @@ public class RegionMarkerFactory {
             }
         });
 
+        Map<Long, RegionTrendSnapshot> trends = trendTracker.update(snapshots, configuration.visualization());
         Map<String, ShapeMarker> markers = new HashMap<>(snapshots.size());
         MarkerColors staticColors = new MarkerColors(
                 configuration.markerLineColor(),
@@ -65,16 +84,22 @@ public class RegionMarkerFactory {
                 continue;
             }
 
+            RegionTrendSnapshot trend = trends.getOrDefault(
+                    snapshot.regionId(),
+                    RegionTrendSnapshot.unavailable(false, false, java.time.Duration.ZERO)
+            );
             String baseMarkerId = "region-" + snapshot.regionId();
             String label = RegionTextFormatter.formatLabel(
                     configuration.markerLabelFormat(),
                     snapshot,
+                    trend,
                     configuration.visualization(),
                     configuration.markerTimestampFormatter()
             );
             String detail = RegionTextFormatter.formatDetail(
                     configuration.markerDetailFormat(),
                     snapshot,
+                    trend,
                     configuration.visualization(),
                     configuration.markerTimestampFormatter()
             );

@@ -16,6 +16,8 @@ Zeigt Folia-Tick-Regionen als Marker-Overlay in **BlueMap** an.
 - TPS, durchschnittliche MSPT und schlechteste 5 % beziehungsweise 1 % der Tickzeiten
 - Regionsauslastung über auswählbare Zeitfenster von 5 Sekunden bis 15 Minuten
 - Heatmap nach Auslastung, MSPT oder TPS mit konfigurierbaren Statusfarben
+- Kurzzeit-Trends für TPS, Tickzeit und Auslastung sowie Erkennung kritischer Tickspitzen
+- Dauer eines ununterbrochenen Warnzustands
 - Zeitpunkt der letzten Datenerfassung
 - Laufzeitstatus und manuelles Aktualisieren per Befehl
 - Standardmäßig ausgeblendet und in BlueMap umschaltbar
@@ -40,6 +42,16 @@ Beim ersten Start wird `plugins/BlueMap-Folia-Regions/config.yml` erstellt.
 
 ```yaml
 update-interval-seconds: 5
+
+trends:
+  enabled: true
+  # Trends nach längeren Pausen oder einer geänderten Regionsform zurücksetzen
+  reset-after-seconds: 30
+  sensitivity:
+    # Kleinere Änderungen gelten als stabil
+    tps: 0.10
+    mspt: 1.0
+    utilization-percentage-points: 2.0
 
 visualization:
   # static, utilization, mspt oder tps
@@ -114,6 +126,7 @@ markers:
           <div><strong>{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
         </div>
         <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
+        <div style="margin-top:5px;opacity:.65;font-size:11px;line-height:1.35">Trend: TPS <span style="color:{tps_trend_color};font-weight:700">{tps_trend}</span> &middot; Tickzeit <span style="color:{mspt_trend_color};font-weight:700">{mspt_trend}</span> &middot; Auslastung <span style="color:{utilization_trend_color};font-weight:700">{utilization_trend}</span>{spike_detail}{warning_duration_detail}</div>
       </div>
       <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
     </div>
@@ -144,11 +157,19 @@ Für `markers.label-format` und `markers.detail-format` stehen folgende Platzhal
 - `{visualization_status}` für den Status der aktuell ausgewählten Heatmap-Metrik
 - `{visualization_color}` als zugehörige CSS-Farbe
 - `{visualization_mode}`
+- `{trend_available}`, `{trend_samples}`
+- `{tps_trend}`, `{mspt_trend}`, `{utilization_trend}` als kompakte Richtungspfeile
+- `{tps_trend_status}`, `{mspt_trend_status}`, `{utilization_trend_status}`
+- `{tps_trend_color}`, `{mspt_trend_color}`, `{utilization_trend_color}`
+- `{tick_spike}`, `{spike_detail}`
+- `{warning_duration}`, `{warning_duration_detail}`
 - `{updated_at}`
 
 Unbekannte Platzhalter bleiben unverändert. Dynamische Werte in der HTML-Detailansicht werden automatisch maskiert.
 
 Im Modus `static` werden weiterhin `markers.line-color` und `markers.fill-color` verwendet. Die übrigen Modi wählen die Farbe anhand der zugehörigen Schwellenwerte. Solange Folia noch nicht genügend Tickdaten gesammelt hat, wird die Farbe `unavailable` verwendet.
+
+Trends vergleichen eine Region mit ihrer vorherigen erfolgreichen Erfassung. Grün kennzeichnet eine Verbesserung, Rot eine Verschlechterung und Grau einen stabilen Wert. Nach einer Änderung der zugehörigen Sektionen oder nach Ablauf von `trends.reset-after-seconds` beginnt die Erfassung neu. Dadurch werden dynamisch geteilte oder zusammengeführte Folia-Regionen nicht miteinander verglichen. Die Trendhistorie wird nur im Arbeitsspeicher gehalten und bei einem Reload oder Serverneustart zurückgesetzt.
 
 ## Befehle
 

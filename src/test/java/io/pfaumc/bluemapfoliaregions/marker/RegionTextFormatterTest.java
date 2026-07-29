@@ -5,12 +5,15 @@ import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration.MarkerColors;
 import io.pfaumc.bluemapfoliaregions.performance.PerformanceThresholds;
 import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
+import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.ReportWindow;
+import io.pfaumc.bluemapfoliaregions.performance.TrendDirection;
 import io.pfaumc.bluemapfoliaregions.performance.VisualizationMode;
 import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -106,6 +109,52 @@ class RegionTextFormatterTest {
         );
 
         assertEquals("<b>&lt;world &amp; &#39;friends&#39;&gt;</b>", result);
+    }
+
+    @Test
+    void formatsCompactPerformanceTrends() {
+        RegionTrendSnapshot trend = new RegionTrendSnapshot(
+                true,
+                TrendDirection.IMPROVING,
+                TrendDirection.STABLE,
+                TrendDirection.WORSENING,
+                true,
+                true,
+                Duration.ofSeconds(65),
+                4
+        );
+        String format = "{tps_trend}|{mspt_trend}|{utilization_trend}|{tps_trend_status}|"
+                + "{tick_spike}|{warning_duration}|{trend_samples}{spike_detail}{warning_duration_detail}";
+
+        String result = RegionTextFormatter.formatLabel(
+                format,
+                snapshot("world"),
+                trend,
+                VISUALIZATION,
+                TIME_FORMATTER
+        );
+
+        assertEquals("↑|→|↑|Besser|Ja|1 min 5 s|4 · Tickspitze · Warnung seit 1 min 5 s", result);
+    }
+
+    @Test
+    void escapesInitialWarningDurationInHtml() {
+        RegionTrendSnapshot trend = RegionTrendSnapshot.unavailable(true, true, Duration.ZERO);
+
+        String result = RegionTextFormatter.formatDetail(
+                "{warning_duration}",
+                snapshot("world"),
+                trend,
+                VISUALIZATION,
+                TIME_FORMATTER
+        );
+
+        assertEquals("&lt; 1 s", result);
+    }
+
+    @Test
+    void formatsLongTrendDurationsCompactly() {
+        assertEquals("2 h 5 min", RegionTextFormatter.formatDuration(Duration.ofMinutes(125)));
     }
 
     private static RegionSnapshot snapshot(String worldName) {
