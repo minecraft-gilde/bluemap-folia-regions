@@ -34,4 +34,14 @@ class PerformanceThresholdsTest {
         assertFalse(new PerformanceThresholds(0.75D, 0.60D, 0.90D, false).isOrdered());
         assertFalse(new PerformanceThresholds(18.0D, 19.5D, 15.0D, true).isOrdered());
     }
+
+    @Test
+    void returnsThresholdForEachProblemStatus() {
+        PerformanceThresholds thresholds = new PerformanceThresholds(25.0D, 40.0D, 50.0D, false);
+
+        assertEquals(25.0D, thresholds.thresholdFor(RegionStatus.WARNING));
+        assertEquals(40.0D, thresholds.thresholdFor(RegionStatus.HIGH));
+        assertEquals(50.0D, thresholds.thresholdFor(RegionStatus.CRITICAL));
+        assertTrue(Double.isNaN(thresholds.thresholdFor(RegionStatus.NORMAL)));
+    }
 }

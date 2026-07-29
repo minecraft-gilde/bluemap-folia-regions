@@ -43,4 +43,13 @@ public record PerformanceThresholds(
         }
         return RegionStatus.NORMAL;
     }
+
+    public double thresholdFor(RegionStatus status) {
+        return switch (status) {
+            case WARNING -> this.warning;
+            case HIGH -> this.high;
+            case CRITICAL -> this.critical;
+            case NORMAL, UNAVAILABLE -> Double.NaN;
+        };
+    }
 }

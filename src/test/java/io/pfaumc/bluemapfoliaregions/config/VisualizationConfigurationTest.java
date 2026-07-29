@@ -44,6 +44,17 @@ class VisualizationConfigurationTest {
         );
     }
 
+    @Test
+    void classifiesEachPerformanceMetricIndependently() {
+        RegionPerformanceSnapshot performance = performance(17.0D, 52.0D, 0.80D);
+        VisualizationConfiguration visualization = visualization(VisualizationMode.UTILIZATION);
+
+        assertEquals(RegionStatus.HIGH, visualization.tpsStatus(performance));
+        assertEquals(RegionStatus.CRITICAL, visualization.msptStatus(performance));
+        assertEquals(RegionStatus.HIGH, visualization.utilizationStatus(performance));
+        assertEquals(RegionStatus.CRITICAL, visualization.overallStatus(performance));
+    }
+
     private static VisualizationConfiguration visualization(VisualizationMode mode) {
         return new VisualizationConfiguration(
                 mode,

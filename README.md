@@ -18,6 +18,7 @@ Zeigt Folia-Tick-Regionen als Marker-Overlay in **BlueMap** an.
 - Heatmap nach Auslastung, MSPT oder TPS mit konfigurierbaren Statusfarben
 - Kurzzeit-Trends für TPS, Tickzeit und Auslastung sowie Erkennung kritischer Tickspitzen
 - Dauer eines ununterbrochenen Warnzustands
+- Eigene Statusfarbe pro Leistungswert und kompakte Ursachenanalyse mit Schwellenwert
 - Zeitpunkt der letzten Datenerfassung
 - Laufzeitstatus und manuelles Aktualisieren per Befehl
 - Standardmäßig ausgeblendet und in BlueMap umschaltbar
@@ -119,15 +120,16 @@ markers:
         </div>
       </div>
       <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
-        <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">LEISTUNG &middot; {report_window}</div>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
-          <div><strong>{tps}</strong><div style="opacity:.6;font-size:11px">TPS</div></div>
-          <div><strong>{mspt} ms</strong><div style="opacity:.6;font-size:11px">&Oslash; Tickzeit</div></div>
-          <div><strong>{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
-        </div>
-        <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
-        <div style="margin-top:5px;opacity:.65;font-size:11px;line-height:1.35">Trend: TPS <span style="color:{tps_trend_color};font-weight:700">{tps_trend}</span> &middot; Tickzeit <span style="color:{mspt_trend_color};font-weight:700">{mspt_trend}</span> &middot; Auslastung <span style="color:{utilization_trend_color};font-weight:700">{utilization_trend}</span>{spike_detail}{warning_duration_detail}</div>
+      <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">LEISTUNG &middot; {report_window}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        <div><strong style="color:{tps_status_color}">{tps}</strong><div style="opacity:.6;font-size:11px">TPS</div></div>
+        <div><strong style="color:{mspt_status_color}">{mspt} ms</strong><div style="opacity:.6;font-size:11px">&Oslash; Tickzeit</div></div>
+        <div><strong style="color:{utilization_status_color}">{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
       </div>
+      <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
+      <div style="margin-top:5px;opacity:.65;font-size:11px;line-height:1.35">Trend: TPS <span style="color:{tps_trend_color};font-weight:700">{tps_trend}</span> &middot; Tickzeit <span style="color:{mspt_trend_color};font-weight:700">{mspt_trend}</span> &middot; Auslastung <span style="color:{utilization_trend_color};font-weight:700">{utilization_trend}</span>{spike_detail}{warning_duration_detail}</div>
+      <div style="margin-top:5px;opacity:.75;font-size:11px;line-height:1.35;overflow-wrap:anywhere">{diagnosis}</div>
+    </div>
       <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
     </div>
   timestamp-format: "yyyy-MM-dd HH:mm:ss z"
@@ -152,6 +154,9 @@ Für `markers.label-format` und `markers.detail-format` stehen folgende Platzhal
 - `{entities_per_chunk}`, `{players_per_chunk}`
 - `{report_window}`, `{collected_ticks}`, `{collected_ticks_formatted}`, `{tps}`, `{mspt}`
 - `{mspt_worst_5}`, `{mspt_worst_1}`, `{utilization}`
+- `{tps_status}`, `{mspt_status}`, `{utilization_status}`
+- `{tps_status_color}`, `{mspt_status_color}`, `{utilization_status_color}`
+- `{diagnosis}` als kompakte Erklärung auffälliger Leistungswerte und ihrer Schwellen
 - `{status}` für den schlechtesten Gesamtstatus aller Leistungsmetriken
 - `{status_color}` als zugehörige CSS-Farbe
 - `{visualization_status}` für den Status der aktuell ausgewählten Heatmap-Metrik
@@ -170,6 +175,8 @@ Unbekannte Platzhalter bleiben unverändert. Dynamische Werte in der HTML-Detail
 Im Modus `static` werden weiterhin `markers.line-color` und `markers.fill-color` verwendet. Die übrigen Modi wählen die Farbe anhand der zugehörigen Schwellenwerte. Solange Folia noch nicht genügend Tickdaten gesammelt hat, wird die Farbe `unavailable` verwendet.
 
 Trends vergleichen eine Region mit ihrer vorherigen erfolgreichen Erfassung. Grün kennzeichnet eine Verbesserung, Rot eine Verschlechterung und Grau einen stabilen Wert. Nach einer Änderung der zugehörigen Sektionen oder nach Ablauf von `trends.reset-after-seconds` beginnt die Erfassung neu. Dadurch werden dynamisch geteilte oder zusammengeführte Folia-Regionen nicht miteinander verglichen. Die Trendhistorie wird nur im Arbeitsspeicher gehalten und bei einem Reload oder Serverneustart zurückgesetzt.
+
+Die Farbe eines Leistungswertes beschreibt seinen aktuellen Status; der daneben angezeigte Trend beschreibt dagegen seine zeitliche Entwicklung. So kann ein kritischer Wert gleichzeitig einen grünen Verbesserungstrend besitzen. Die Diagnose nennt alle auffälligen Metriken, beginnend mit der schwerwiegendsten, und zeigt den jeweils erreichten Schwellenwert.
 
 ## Befehle
 

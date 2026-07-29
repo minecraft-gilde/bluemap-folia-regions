@@ -57,12 +57,13 @@ public record PluginConfiguration(
               <div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
                 <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">LEISTUNG &middot; {report_window}</div>
                 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
-                  <div><strong>{tps}</strong><div style="opacity:.6;font-size:11px">TPS</div></div>
-                  <div><strong>{mspt} ms</strong><div style="opacity:.6;font-size:11px">&Oslash; Tickzeit</div></div>
-                  <div><strong>{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
+                  <div><strong style="color:{tps_status_color}">{tps}</strong><div style="opacity:.6;font-size:11px">TPS</div></div>
+                  <div><strong style="color:{mspt_status_color}">{mspt} ms</strong><div style="opacity:.6;font-size:11px">&Oslash; Tickzeit</div></div>
+                  <div><strong style="color:{utilization_status_color}">{utilization} %</strong><div style="opacity:.6;font-size:11px">Auslastung</div></div>
                 </div>
                 <div style="margin-top:7px;opacity:.65;font-size:11px;line-height:1.35">Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms &middot; {collected_ticks_formatted} Ticks</div>
                 <div style="margin-top:5px;opacity:.65;font-size:11px;line-height:1.35">Trend: TPS <span style="color:{tps_trend_color};font-weight:700">{tps_trend}</span> &middot; Tickzeit <span style="color:{mspt_trend_color};font-weight:700">{mspt_trend}</span> &middot; Auslastung <span style="color:{utilization_trend_color};font-weight:700">{utilization_trend}</span>{spike_detail}{warning_duration_detail}</div>
+                <div style="margin-top:5px;opacity:.75;font-size:11px;line-height:1.35;overflow-wrap:anywhere">{diagnosis}</div>
               </div>
               <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
             </div>""";
@@ -276,6 +277,13 @@ public record PluginConfiguration(
         ) && responsive.contains(
                 "Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms"
         ) && !responsive.contains("{tps_trend}")) {
+            return DEFAULT_DETAIL_FORMAT;
+        }
+        if (responsive.contains(
+                "width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25"
+        ) && responsive.contains("Trend: TPS ")
+                && responsive.contains("{tps_trend_color}")
+                && !responsive.contains("{diagnosis}")) {
             return DEFAULT_DETAIL_FORMAT;
         }
         return responsive;

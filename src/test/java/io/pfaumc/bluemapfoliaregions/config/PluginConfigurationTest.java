@@ -100,4 +100,18 @@ class PluginConfigurationTest {
         assertEquals(2.5D, trends.minimumMsptChange());
         assertEquals(0.03D, trends.minimumUtilizationChange());
     }
+
+    @Test
+    void upgradesTrendLayoutToDiagnosticLayout() {
+        String previous = """
+                <div style="width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;font-size:14px;line-height:1.25">
+                  <div>Spitzen: 5 % {mspt_worst_5} ms &middot; 1 % {mspt_worst_1} ms</div>
+                  <div>Trend: TPS <span style="color:{tps_trend_color}">{tps_trend}</span></div>
+                </div>""";
+
+        String migrated = PluginConfiguration.detailFormatOrDefault(previous);
+
+        assertTrue(migrated.contains("color:{tps_status_color}"));
+        assertTrue(migrated.contains("{diagnosis}"));
+    }
 }

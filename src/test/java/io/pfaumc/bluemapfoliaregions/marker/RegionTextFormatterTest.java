@@ -76,6 +76,66 @@ class RegionTextFormatterTest {
     }
 
     @Test
+    void formatsMetricStatusesAndCompactDiagnosis() {
+        RegionSnapshot snapshot = snapshot(
+                "world",
+                new RegionPerformanceSnapshot(
+                        true,
+                        ReportWindow.FIFTEEN_SECONDS,
+                        200,
+                        17.0D,
+                        52.0D,
+                        55.0D,
+                        60.0D,
+                        0.80D
+                )
+        );
+        String format = "{tps_status}|{mspt_status}|{utilization_status}|{tps_status_color}|{diagnosis}";
+
+        String result = RegionTextFormatter.formatLabel(format, snapshot, VISUALIZATION, TIME_FORMATTER);
+
+        assertEquals(
+                "Hoch|Kritisch|Hoch|rgba(0,0,0,1.000)|"
+                        + "Ursachen: Tickzeit: Kritisch (52.00 ≥ 50.00 ms)"
+                        + " · TPS: Hoch (17.00 ≤ 18.00 TPS)"
+                        + " · Auslastung: Hoch (80.00 ≥ 75.00 %)",
+                result
+        );
+    }
+
+    @Test
+    void reportsNormalDiagnosisWithoutInventingCauses() {
+        String result = RegionTextFormatter.formatLabel(
+                "{diagnosis}",
+                snapshot("world"),
+                VISUALIZATION,
+                TIME_FORMATTER
+        );
+
+        assertEquals("Bewertung: Alle Leistungswerte normal", result);
+    }
+
+    @Test
+    void rendersUnavailableMetricsNeutrally() {
+        RegionSnapshot snapshot = snapshot(
+                "world",
+                RegionPerformanceSnapshot.unavailable(ReportWindow.FIFTEEN_SECONDS)
+        );
+
+        String result = RegionTextFormatter.formatLabel(
+                "{tps_status}|{tps_status_color}|{diagnosis}",
+                snapshot,
+                VISUALIZATION,
+                TIME_FORMATTER
+        );
+
+        assertEquals(
+                "Keine Daten|rgba(255,255,255,.45)|Bewertung: Noch keine Leistungsdaten",
+                result
+        );
+    }
+
+    @Test
     void keepsUnknownPlaceholdersUnchanged() {
         String result = RegionTextFormatter.formatLabel(
                 "{region_id} {future_metric}",
@@ -158,6 +218,25 @@ class RegionTextFormatterTest {
     }
 
     private static RegionSnapshot snapshot(String worldName) {
+        return snapshot(
+                worldName,
+                new RegionPerformanceSnapshot(
+                        true,
+                        ReportWindow.FIFTEEN_SECONDS,
+                        200,
+                        19.75D,
+                        12.5D,
+                        30.0D,
+                        45.0D,
+                        0.425D
+                )
+        );
+    }
+
+    private static RegionSnapshot snapshot(
+            String worldName,
+            RegionPerformanceSnapshot performance
+    ) {
         return new RegionSnapshot(
                 42L,
                 worldName,
@@ -168,16 +247,7 @@ class RegionTextFormatterTest {
                 8,
                 12,
                 2,
-                new RegionPerformanceSnapshot(
-                        true,
-                        ReportWindow.FIFTEEN_SECONDS,
-                        200,
-                        19.75D,
-                        12.5D,
-                        30.0D,
-                        45.0D,
-                        0.425D
-                ),
+                performance,
                 Instant.parse("2026-07-29T10:15:30Z")
         );
     }

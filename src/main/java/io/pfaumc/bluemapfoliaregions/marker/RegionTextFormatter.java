@@ -2,6 +2,7 @@ package io.pfaumc.bluemapfoliaregions.marker;
 
 import de.bluecolored.bluemap.api.math.Color;
 import io.pfaumc.bluemapfoliaregions.config.VisualizationConfiguration;
+import io.pfaumc.bluemapfoliaregions.performance.PerformanceThresholds;
 import io.pfaumc.bluemapfoliaregions.performance.RegionPerformanceSnapshot;
 import io.pfaumc.bluemapfoliaregions.performance.RegionStatus;
 import io.pfaumc.bluemapfoliaregions.performance.RegionTrendSnapshot;
@@ -11,6 +12,9 @@ import io.pfaumc.bluemapfoliaregions.region.RegionSnapshot;
 import java.text.NumberFormat;
 import java.time.Duration;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
@@ -90,6 +94,9 @@ final class RegionTextFormatter {
         RegionPerformanceSnapshot performance = snapshot.performance();
         RegionStatus overallStatus = visualization.overallStatus(performance);
         RegionStatus visualizationStatus = visualization.visualizationStatus(performance);
+        RegionStatus tpsStatus = visualization.tpsStatus(performance);
+        RegionStatus msptStatus = visualization.msptStatus(performance);
+        RegionStatus utilizationStatus = visualization.utilizationStatus(performance);
         String unavailable = "n/a";
         Map<String, String> values = Map.ofEntries(
                 Map.entry("region_id", Long.toString(snapshot.regionId())),
@@ -116,7 +123,11 @@ final class RegionTextFormatter {
                 Map.entry("collected_ticks", Integer.toString(performance.collectedTicks())),
                 Map.entry("collected_ticks_formatted", formatInteger(performance.collectedTicks())),
                 Map.entry("tps", performance.available() ? formatMetric(performance.tps()) : unavailable),
+                Map.entry("tps_status", tpsStatus.displayName()),
+                Map.entry("tps_status_color", metricStatusColor(visualization, tpsStatus)),
                 Map.entry("mspt", performance.available() ? formatMetric(performance.averageMspt()) : unavailable),
+                Map.entry("mspt_status", msptStatus.displayName()),
+                Map.entry("mspt_status_color", metricStatusColor(visualization, msptStatus)),
                 Map.entry(
                         "mspt_worst_5",
                         performance.available() ? formatMetric(performance.worstFivePercentMspt()) : unavailable
@@ -129,6 +140,12 @@ final class RegionTextFormatter {
                         "utilization",
                         performance.available() ? formatMetric(performance.utilization() * 100.0D) : unavailable
                 ),
+                Map.entry("utilization_status", utilizationStatus.displayName()),
+                Map.entry(
+                        "utilization_status_color",
+                        metricStatusColor(visualization, utilizationStatus)
+                ),
+                Map.entry("diagnosis", diagnosis(performance, visualization)),
                 Map.entry("status", overallStatus.displayName()),
                 Map.entry("status_color", cssColor(visualization.colorsForStatus(overallStatus).line())),
                 Map.entry("visualization_status", visualizationStatus.displayName()),
@@ -221,9 +238,116 @@ final class RegionTextFormatter {
         };
     }
 
+    private static String metricStatusColor(
+            VisualizationConfiguration visualization,
+            RegionStatus status
+    ) {
+        return status == RegionStatus.UNAVAILABLE
+                ? "rgba(255,255,255,.45)"
+                : cssColor(visualization.colorsForStatus(status).line());
+    }
+
+    private static String diagnosis(
+            RegionPerformanceSnapshot performance,
+            VisualizationConfiguration visualization
+    ) {
+        if (!performance.available()) {
+            return "Bewertung: Noch keine Leistungsdaten";
+        }
+
+        List<MetricCause> causes = new ArrayList<>(3);
+        addCause(
+                causes,
+                "TPS",
+                visualization.tpsStatus(performance),
+                visualization.tpsThresholds(),
+                " TPS",
+                performance.tps()
+        );
+        addCause(
+                causes,
+                "Tickzeit",
+                visualization.msptStatus(performance),
+                visualization.msptThresholds(),
+                " ms",
+                performance.averageMspt()
+        );
+        addCause(
+                causes,
+                "Auslastung",
+                visualization.utilizationStatus(performance),
+                visualization.utilizationThresholds(),
+                " %",
+                performance.utilization(),
+                100.0D
+        );
+        if (causes.isEmpty()) {
+            return "Bewertung: Alle Leistungswerte normal";
+        }
+
+        causes.sort(Comparator.comparingInt((MetricCause cause) -> cause.status().ordinal()).reversed());
+        String prefix = causes.size() == 1 ? "Ursache: " : "Ursachen: ";
+        return prefix + String.join(
+                " · ",
+                causes.stream().map(RegionTextFormatter::formatCause).toList()
+        );
+    }
+
+    private static void addCause(
+            List<MetricCause> causes,
+            String metric,
+            RegionStatus status,
+            PerformanceThresholds thresholds,
+            String unit,
+            double value
+    ) {
+        addCause(causes, metric, status, thresholds, unit, value, 1.0D);
+    }
+
+    private static void addCause(
+            List<MetricCause> causes,
+            String metric,
+            RegionStatus status,
+            PerformanceThresholds thresholds,
+            String unit,
+            double value,
+            double scale
+    ) {
+        if (status == RegionStatus.WARNING
+                || status == RegionStatus.HIGH
+                || status == RegionStatus.CRITICAL) {
+            causes.add(new MetricCause(metric, status, thresholds, unit, value, scale));
+        }
+    }
+
+    private static String formatCause(MetricCause cause) {
+        String comparator = cause.thresholds().lowerIsWorse() ? "≤" : "≥";
+        double threshold = cause.thresholds().thresholdFor(cause.status()) * cause.scale();
+        return cause.metric()
+                + ": "
+                + cause.status().displayName()
+                + " ("
+                + formatMetric(cause.value() * cause.scale())
+                + " "
+                + comparator
+                + " "
+                + formatMetric(threshold)
+                + cause.unit()
+                + ")";
+    }
+
     private static RegionTrendSnapshot noTrend() {
         return RegionTrendSnapshot.unavailable(false, false, Duration.ZERO);
     }
+
+    private record MetricCause(
+            String metric,
+            RegionStatus status,
+            PerformanceThresholds thresholds,
+            String unit,
+            double value,
+            double scale
+    ) {}
 
     private static String formatMetric(double value) {
         return String.format(Locale.ROOT, "%.2f", value);

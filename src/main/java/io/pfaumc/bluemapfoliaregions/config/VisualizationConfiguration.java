@@ -24,10 +24,28 @@ public record VisualizationConfiguration(
             return RegionStatus.UNAVAILABLE;
         }
         return RegionStatus.worst(
-                this.utilizationThresholds.classify(performance.utilization()),
-                this.msptThresholds.classify(performance.averageMspt()),
-                this.tpsThresholds.classify(performance.tps())
+                utilizationStatus(performance),
+                msptStatus(performance),
+                tpsStatus(performance)
         );
+    }
+
+    public RegionStatus utilizationStatus(RegionPerformanceSnapshot performance) {
+        return performance.available()
+                ? this.utilizationThresholds.classify(performance.utilization())
+                : RegionStatus.UNAVAILABLE;
+    }
+
+    public RegionStatus msptStatus(RegionPerformanceSnapshot performance) {
+        return performance.available()
+                ? this.msptThresholds.classify(performance.averageMspt())
+                : RegionStatus.UNAVAILABLE;
+    }
+
+    public RegionStatus tpsStatus(RegionPerformanceSnapshot performance) {
+        return performance.available()
+                ? this.tpsThresholds.classify(performance.tps())
+                : RegionStatus.UNAVAILABLE;
     }
 
     public RegionStatus visualizationStatus(RegionPerformanceSnapshot performance) {
@@ -36,9 +54,9 @@ public record VisualizationConfiguration(
         }
         return switch (this.mode) {
             case STATIC -> overallStatus(performance);
-            case UTILIZATION -> this.utilizationThresholds.classify(performance.utilization());
-            case MSPT -> this.msptThresholds.classify(performance.averageMspt());
-            case TPS -> this.tpsThresholds.classify(performance.tps());
+            case UTILIZATION -> utilizationStatus(performance);
+            case MSPT -> msptStatus(performance);
+            case TPS -> tpsStatus(performance);
         };
     }
 
