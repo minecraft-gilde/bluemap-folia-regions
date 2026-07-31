@@ -55,7 +55,7 @@ public record PluginConfiguration(
                 <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">AKTIVIT&Auml;T</div>
                 <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
                   <div><strong>{entities_formatted} <span style="color:{entities_trend_color};font-size:11px">{entities_trend}</span></strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
-                  <div><strong>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
+                  <div><strong>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></strong><div style="opacity:.65;font-size:11px">Spieler</div></div>
                 </div>
                 <div style="display:{load_context_display};margin-top:6px;opacity:.65;font-size:11px;line-height:1.35;overflow-wrap:anywhere">{load_context}</div>
               </div>
@@ -72,10 +72,21 @@ public record PluginConfiguration(
               </div>
               <div style="margin-top:10px;text-align:right;opacity:.45;font-size:10px">Stand: {updated_at}</div>
             </div>""";
+    private static final String PLAYER_DENSITY_DETAIL =
+            "<div style=\"margin-top:1px;opacity:.45;font-size:10px\">{players_per_chunk} / Chunk</div>";
+    private static final String PREVIOUS_PLAYER_DENSITY_DETAIL_FORMAT = DEFAULT_DETAIL_FORMAT.replace(
+            "<div style=\"opacity:.65;font-size:11px\">Spieler</div></div>",
+            "<div style=\"opacity:.65;font-size:11px\">Spieler</div>" + PLAYER_DENSITY_DETAIL + "</div>"
+    );
     private static final String PREVIOUS_DEFAULT_DETAIL_FORMAT = DEFAULT_DETAIL_FORMAT.replace(
             ">Fl&auml;che</div>",
             ">Bl&ouml;cke&sup2;</div>"
     );
+    private static final String PREVIOUS_PLAYER_DENSITY_AREA_DETAIL_FORMAT =
+            PREVIOUS_PLAYER_DENSITY_DETAIL_FORMAT.replace(
+                    ">Fl&auml;che</div>",
+                    ">Bl&ouml;cke&sup2;</div>"
+            );
     private static final String LEGACY_DETAIL_FORMAT = """
             <b>Folia-Region {region_id}</b><br>
             Welt: {world}<br>
@@ -311,7 +322,9 @@ public record PluginConfiguration(
     static String detailFormatOrDefault(String value) {
         String configured = stringOrDefault(value, DEFAULT_DETAIL_FORMAT);
         if (configured.strip().equals(LEGACY_DETAIL_FORMAT.strip())
-                || configured.strip().equals(PREVIOUS_DEFAULT_DETAIL_FORMAT.strip())) {
+                || configured.strip().equals(PREVIOUS_DEFAULT_DETAIL_FORMAT.strip())
+                || configured.strip().equals(PREVIOUS_PLAYER_DENSITY_DETAIL_FORMAT.strip())
+                || configured.strip().equals(PREVIOUS_PLAYER_DENSITY_AREA_DETAIL_FORMAT.strip())) {
             return DEFAULT_DETAIL_FORMAT;
         }
         String responsive = configured

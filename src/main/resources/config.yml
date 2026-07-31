@@ -113,7 +113,7 @@ markers:
       <div style="margin-bottom:6px;opacity:.55;font-size:10px;font-weight:700;letter-spacing:.08em">AKTIVIT&Auml;T</div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
         <div><strong>{entities_formatted} <span style="color:{entities_trend_color};font-size:11px">{entities_trend}</span></strong><div style="opacity:.65;font-size:11px">Entit&auml;ten</div><div style="margin-top:1px;opacity:.45;font-size:10px">{entities_per_chunk} / Chunk</div></div>
-        <div><strong>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></strong><div style="opacity:.65;font-size:11px">Spieler</div><div style="margin-top:1px;opacity:.45;font-size:10px">{players_per_chunk} / Chunk</div></div>
+        <div><strong>{players_formatted} <span style="color:{players_trend_color};font-size:11px">{players_trend}</span></strong><div style="opacity:.65;font-size:11px">Spieler</div></div>
       </div>
       <div style="display:{load_context_display};margin-top:6px;opacity:.65;font-size:11px;line-height:1.35;overflow-wrap:anywhere">{load_context}</div>
       </div>

@@ -170,7 +170,13 @@ class RegionTextFormatterTest {
                 TIME_FORMATTER
         );
 
-        assertEquals("<b>&lt;world &amp; &#39;friends&#39;&gt;</b>", result);
+        assertEquals(
+                "<style data-bmfr-popup-layer>"
+                        + "#map-container div:has(>.bm-marker-labelpopup)"
+                        + "{z-index:2147483647!important}</style>"
+                        + "<b>&lt;world &amp; &#39;friends&#39;&gt;</b>",
+                result
+        );
     }
 
     @Test
@@ -261,7 +267,12 @@ class RegionTextFormatterTest {
                 TIME_FORMATTER
         );
 
-        assertEquals("&lt; 1 s", result);
+        assertEquals(
+                "<style data-bmfr-popup-layer>"
+                        + "#map-container div:has(>.bm-marker-labelpopup)"
+                        + "{z-index:2147483647!important}</style>&lt; 1 s",
+                result
+        );
     }
 
     @Test

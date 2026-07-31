@@ -25,6 +25,12 @@ import java.util.regex.Pattern;
 
 final class RegionTextFormatter {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{([a-z0-9_]+)}");
+    // BlueMap applies its distance-based z-index to the anonymous CSS2D wrapper
+    // around the popup, so the wrapper itself has to be raised above POI/player markers.
+    private static final String POPUP_STACKING_STYLE =
+            "<style data-bmfr-popup-layer>"
+                    + "#map-container div:has(>.bm-marker-labelpopup)"
+                    + "{z-index:2147483647!important}</style>";
 
     private RegionTextFormatter() {}
 
@@ -121,7 +127,7 @@ final class RegionTextFormatter {
             VisualizationConfiguration visualization,
             DateTimeFormatter timestampFormatter
     ) {
-        return format(
+        return POPUP_STACKING_STYLE + format(
                 format,
                 snapshot,
                 trend,

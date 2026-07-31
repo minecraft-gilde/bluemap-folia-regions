@@ -61,7 +61,7 @@ Die Pfeile bei Entitäten und Spielern zeigen lediglich, ob sich ihre Anzahl erh
 
 - `{entities}`, `{players}`
 - `{entities_formatted}`, `{players_formatted}`
-- `{entities_per_chunk}`, `{players_per_chunk}`
+- `{entities_per_chunk}`, `{players_per_chunk}` (letzterer bleibt für eigene Layouts verfügbar, wird im Standardlayout aber nicht angezeigt)
 - `{entities_trend}`, `{players_trend}`
 - `{entities_trend_status}`, `{players_trend_status}`
 - `{entities_trend_color}`, `{players_trend_color}`

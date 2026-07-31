@@ -12,6 +12,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -28,6 +29,22 @@ class PluginConfigurationTest {
 
         assertTrue(migrated.contains(">Fl&auml;che</div>"));
         assertNotEquals(previousDefault, migrated);
+    }
+
+    @Test
+    void removesPlayerDensityFromPreviousDefaultLayout() {
+        String currentDefault = PluginConfiguration.detailFormatOrDefault(null);
+        String previousDefault = currentDefault.replace(
+                "<div style=\"opacity:.65;font-size:11px\">Spieler</div></div>",
+                "<div style=\"opacity:.65;font-size:11px\">Spieler</div>"
+                        + "<div style=\"margin-top:1px;opacity:.45;font-size:10px\">"
+                        + "{players_per_chunk} / Chunk</div></div>"
+        );
+
+        String migrated = PluginConfiguration.detailFormatOrDefault(previousDefault);
+
+        assertTrue(migrated.contains(">Spieler</div></div>"));
+        assertFalse(migrated.contains("{players_per_chunk} / Chunk"));
     }
 
     @Test
